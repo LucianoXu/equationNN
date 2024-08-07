@@ -1,8 +1,25 @@
 
 from treenn import *
+from randomgen import *
 
 if __name__ == '__main__':
-    term = parse("(a+b)+(b+a)")
-    assert term.apply((), rule_comm) == parse("(b+a)+(a+b)")
-    print(term.apply((0,), rule_comm))
+    # random.seed(42)
+
+    path = get_head(4)
+    print(path)
+
+    print()
+    random_rule = [rule_comm, rule_assoc1, rule_assoc2]
+    random_apply_n(path, random_rule, 10)
+
+    print(path)
+
+    path.verify(set(random_rule))
+
+    invpath = path.get_inverse(inverse_table)
     
+    print()
+    print(invpath)
+    print()
+
+    invpath.verify(set(random_rule))

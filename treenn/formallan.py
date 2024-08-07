@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+import random
 from typing import Callable, Optional
 
 class Tree:
@@ -9,6 +10,10 @@ class Tree:
 
     def __eq__(self, other):
         return isinstance(other, Tree) and self.data == other.data and self.sub == other.sub
+    
+    def __hash__(self):
+        return hash((self.data, self.sub))
+        # return 0 # fix the hash value
     
     def __str__(self):
         # return the string (data sub1 sub2 ... subn)
@@ -41,6 +46,21 @@ class Tree:
         
         new_sub = self.sub[:pos[0]] + (subst_tree,) + self.sub[pos[0] + 1:]
         return Tree(self.data, new_sub)
+    
+    def all_nodes(self, pos_prefix : tuple[int, ...] = ()) -> set[tuple[tuple[int, ...], Tree]]:
+        '''
+        return all nodes in the tree
+        '''
+        res : set[tuple[tuple[int, ...], Tree]] = set([(pos_prefix, self)])
+        for i, sub in enumerate(self.sub):
+            res |= sub.all_nodes(pos_prefix + (i,))
+        return res
+    
+    def get_random_node(self) -> tuple[tuple[int, ...], Tree]:
+        '''
+        return a random node in the tree
+        '''
+        return random.choice(list(self.all_nodes()))
         
 # a tree operation accepts a tree as input and return the replacement result
 # If the operation fails, return None.
@@ -52,6 +72,24 @@ class Leaf(Tree):
 
     def __str__(self):
         return self.data
+    
+class Var(Leaf):
+    '''
+    The tree node representing variables
+    '''
+    count = 0
+
+    def __init__(self, data: str):
+        super().__init__(data)
+
+    @staticmethod
+    def unique() -> Var:
+        '''
+        return a unique variable
+        '''
+        Var.count += 1
+        return Var(f"${Var.count}")
+        
 
 class InfixBinTree(Tree):
     def __init__(self, data: str, left: Tree, right: Tree):
