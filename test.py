@@ -2,5 +2,7 @@
 from treenn import *
 
 if __name__ == '__main__':
-    code = "a + (b + a)"
-    print(parse(code))
+    term = parse("(a+b)+(b+a)")
+    assert term.apply((), rule_comm) == parse("(b+a)+(a+b)")
+    print(term.apply((0,), rule_comm))
+    
