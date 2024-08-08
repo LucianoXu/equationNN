@@ -49,3 +49,10 @@ def test_tree_eq_opt():
     res = term.apply(rule_eq_expand)
     assert res is not None
     assert res.data == '=' and res.sub[0] == res.sub[1]
+
+def test_tree_flatten():
+    term = parse("((a+b)+(b+a))+b")
+    node_list, pos_list, idx_dict = term.flatten()
+    assert len(node_list) == 9
+    for i, node in enumerate(node_list):
+        assert node == term[pos_list[i]]

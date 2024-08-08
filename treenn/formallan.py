@@ -19,6 +19,9 @@ class Tree:
         # return the string (data sub1 sub2 ... subn)
         return f"({self.data} {' '.join(map(str, self.sub))})"
     
+    def __repr__(self):
+        return self.__str__()
+    
     @property
     def is_atom(self) -> bool:
         return not self.sub
@@ -61,6 +64,39 @@ class Tree:
         return a random node in the tree
         '''
         return random.choice(list(self.all_nodes()))
+    
+
+    def flatten(self) -> tuple[list[Tree], list[tuple[int, ...]], dict[tuple[int, ...], int]]:
+        '''
+        return tuple:
+        - the list of node data
+        - the list of node positions
+        - the dictionary from the positions to its index in the list
+        '''
+        node_list = []
+        pos_list = []
+        idx_dict = {}
+        
+        self.__flatten((), node_list, pos_list, idx_dict)
+        return node_list, pos_list, idx_dict
+
+    def __flatten(self, pos_prefix : tuple[int, ...], 
+            node_list: list[Tree], 
+            pos_list: list[tuple[int, ...]],
+            idx_dict: dict[tuple[int, ...], int]):
+        '''
+        node_list: the list of nodes
+        pos_list: the list of node positions
+        idx_dict: the dictionary from the positions to its index in the list
+        '''
+        idx_dict[pos_prefix] = len(node_list)
+        pos_list.append(pos_prefix)
+        node_list.append(self)
+        for i, sub in enumerate(self.sub):
+            sub.__flatten(pos_prefix + (i,), node_list, pos_list, idx_dict)
+
+
+
         
 # a tree operation accepts a tree as input and return the replacement result
 # If the operation fails, return None.
@@ -108,3 +144,6 @@ class InfixBinTree(Tree):
         
         new_sub = self.sub[:pos[0]] + (subst_tree,) + self.sub[pos[0] + 1:]
         return InfixBinTree(self.data, *new_sub)
+    
+
+term_tokenizer = {'True': 0, '+': 1, 'a': 2, 'b': 3}

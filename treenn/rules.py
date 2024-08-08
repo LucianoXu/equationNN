@@ -146,3 +146,10 @@ inverse_table = {
     rule_assoc2 : rule_assoc1,
     rule_eq_expand : rule_eq_reduce
 }
+
+opt_tokenizer = {
+    rule_comm: 1,
+    rule_assoc1: 2,
+    rule_assoc2: 3,
+    rule_eq_reduce: 4
+}
