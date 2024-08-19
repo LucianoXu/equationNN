@@ -97,4 +97,8 @@ def p_term_eq(p):
 parser = yacc.yacc()
 
 def parse(s: str) -> Tree:
-    return parser.parse(s, lexer = lexer)
+    res = parser.parse(s, lexer = lexer)
+    if not res:
+        raise ValueError(f"Parsing failed for the input string '{s}'")
+
+    return res

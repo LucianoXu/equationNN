@@ -146,4 +146,4 @@ class InfixBinTree(Tree):
         return InfixBinTree(self.data, *new_sub)
     
 
-term_tokenizer = {'True': 0, '+': 1, 'a': 2, 'b': 3}
+term_tokenizer = {'True': 0, '=' : 1, '+': 2, 'a': 3, 'b': 4}

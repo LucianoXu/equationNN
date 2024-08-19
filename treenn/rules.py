@@ -7,48 +7,50 @@ class RewritePath:
     '''
     The class to represent a path of rewriting operations
     '''
-    def __init__(self, start : Tree, path: tuple[tuple[TreeOpt, tuple[int, ...], Tree], ...] = ()):
-        self.start = start
+    def __init__(self, path: tuple[tuple[Tree, TreeOpt, tuple[int, ...]], ...], current : Tree):
         self.path = list(path)
+        self.current = current
 
     @property
-    def current(self) -> Tree:
+    def start(self) -> Tree:
         '''
         return the current tree
         '''
         if self.path == ():
-            return self.start
+            return self.current
         else:
-            return self.path[-1][2]
+            return self.path[0][0]
 
     def get_inverse(self, inverse_table: dict[TreeOpt, TreeOpt]) -> RewritePath:
         '''
         return the inverse path of the current path
         '''
         if not self.path:
-            return RewritePath(self.start, ())
+            return RewritePath((), self.start)
         
-        new_start = self.path[-1][2]
+        new_current = self.path[0][0]
         new_path = []
-        for i in range(len(self.path) - 1, 0, -1):
-            opt, pos, _ = self.path[i]
-            new_path.append((inverse_table[opt], pos, self.path[i - 1][2]))
 
-        opt, pos, _ = self.path[0]
-        new_path.append((inverse_table[opt], pos, self.start))
+        _, opt, pos = self.path[-1]
+        new_path.append((self.current, inverse_table[opt], pos))
+
+        for i in range(len(self.path) - 2, -1, -1):
+            _, opt, pos = self.path[i]
+            new_path.append((self.path[i+1][0], inverse_table[opt], pos))
         
-        return RewritePath(new_start, tuple(new_path))
+        return RewritePath(tuple(new_path), new_current)
     
     def apply(self, opt: TreeOpt, pos: tuple[int, ...]) -> bool:
         '''
         apply the operation at the position, and update the path
         return: whether the application is successful
         '''
-        new_tree = self.current.apply(opt, pos)
-        if new_tree is None:
+        new_current = self.current.apply(opt, pos)
+        if new_current is None:
             return False
         
-        self.path.append((opt, pos, new_tree))
+        self.path.append((self.current, opt, pos))
+        self.current = new_current
         return True
 
     def verify(self, verify_opt: Optional[set[TreeOpt]]):
@@ -58,10 +60,10 @@ class RewritePath:
         if not self.path:
             return
         
-        pre = self.start
 
-        for i in range(len(self.path) - 1):
-            opt, pos, post = self.path[i]
+        for i in range(len(self.path)):
+            pre, opt, pos = self.path[i]
+            post = self.path[i+1][0] if i < len(self.path) - 1 else self.current
 
             if verify_opt is None or opt in verify_opt:
                 if pre.apply(opt, pos) != post:
@@ -74,10 +76,10 @@ class RewritePath:
         Print out the terms and the operations line by line
         '''
         res = []
-        res.append(str(self.start))
-        for opt, pos, term in self.path:
-            res.append(f" -- {opt} at {pos} -->")
+        for term, opt, pos in self.path:
             res.append(str(term))
+            res.append(f" -- {opt} at {pos} -->")
+        res.append(str(self.current))
         return '\n'.join(res)
     
     
