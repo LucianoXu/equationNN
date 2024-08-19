@@ -42,6 +42,19 @@ def pos_list2encoding_instruction(pos_list: list[tuple[int, ...]],
     return layer_inst, branch_inst
 
 
+def get_model_input_from_term(
+        term: Tree, max_height: int, width: int,
+        term_tokenizer: dict[str, int]) -> tuple[list[int], PosInst]:
+    
+    node_list, pos_list, _ = term.flatten()
+
+    term_data = [term_tokenizer[term.data] for term in node_list]
+
+    pos_instruct = pos_list2encoding_instruction(
+        pos_list, height=max_height, width=width)
+    
+    return term_data, pos_instruct
+
 def get_single_example_data(
         term: Tree, max_height: int, width: int,
         opt: TreeOpt, pos: tuple[int, ...],
@@ -56,7 +69,6 @@ def get_single_example_data(
     - the position instruction
     - the target data
     '''
-    
     node_list, pos_list, idx_dict = term.flatten()
 
     term_data = [term_tokenizer[term.data] for term in node_list]
