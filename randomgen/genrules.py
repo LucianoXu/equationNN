@@ -18,7 +18,7 @@ def gen_expression(max_height: int) -> Tree:
 
 def get_head(max_height : int) -> RewritePath:
     e = gen_expression(max_height)
-    res = RewritePath(((Leaf('True'), rule_eq_expand, (0,)),), InfixBinTree('=', e, e))
+    res = RewritePath(((Leaf('True'), rule_eq_expand, ()),), InfixBinTree('=', e, e))
     return res
 
 def random_apply(path: RewritePath, opts: list[TreeOpt], retry: int = 10):

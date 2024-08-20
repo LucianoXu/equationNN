@@ -79,7 +79,7 @@ def model_input_add_padding(
 def get_single_example_data(
         term: Tree, max_height: int, width: int,
         opt: TreeOpt, pos: tuple[int, ...],
-        term_tokenizer: dict[str, int], opt_tokenizer: dict[TreeOpt, int]) -> tuple[list[int], list[tuple[int, ...]], PosInst, list[int]]:
+        term_tokenizer: dict[str, int], opt_tokenizer: dict[TreeOpt, int]) -> tuple[list[int], list[tuple[int, ...]], PosInst, tuple[int, int]]:
     '''
     Transform one operation into the single supervised learning data example.
 
@@ -88,14 +88,13 @@ def get_single_example_data(
     return:
     - the tokenized term data
     - the position instruction
-    - the target data
+    - the target data (node index, opt id)
     '''
     node_list, pos_list, idx_dict = term.flatten()
 
     term_data = [term_tokenizer[term.data] for term in node_list]
 
-    target_data = [0] * len(node_list)
-    target_data[idx_dict[pos]] = opt_tokenizer[opt]
+    target_data = (idx_dict[pos], opt_tokenizer[opt])
 
     pos_instruct = pos_list2encoding_instruction(pos_list, height=max_height, width=width)
 
@@ -103,18 +102,22 @@ def get_single_example_data(
 
 
 def synthesize_example_thread(height: int, max_height: int, path_length: int, n: int,
-                              max_length: Optional[int] = None) -> list[tuple[list[int], list[tuple[int, ...]], PosInst, list[int]]]:
+                              max_length: Optional[int] = None) -> list[tuple[list[int], list[tuple[int, ...]], PosInst, tuple[int, int]]]:
     '''
     synthesize n examples for the thread with the maximum height
     path_length: the maximum length of every random rewriting path
     max_length: if not None, will filter out the examples with the length greater than max_length
     '''
-    examples: list[tuple[list[int], list[tuple[int, ...]], PosInst, list[int]]] = []
+    examples: list[tuple[list[int], list[tuple[int, ...]], PosInst, tuple[int, int]]] = []
 
-    random_rule = [rule_comm, rule_assoc1, rule_assoc2]
+    random_rule = [rule_comm]
 
     # use tqdm to visualize the progress
     progress_bar = tqdm(total=n)
+
+    counting = {}
+    for opt in opt_tokenizer:
+        counting[opt] = 0
 
     while len(examples) < n:
         path = get_head(height)
@@ -125,7 +128,7 @@ def synthesize_example_thread(height: int, max_height: int, path_length: int, n:
         # get the supervised learning data
         invpath = path.get_inverse(inverse_table)
 
-        for step in invpath.path:
+        for step in invpath.path[:-1]:
             term, opt, pos = step
             single_data = get_single_example_data(
                 term, max_height, 2,
@@ -138,8 +141,12 @@ def synthesize_example_thread(height: int, max_height: int, path_length: int, n:
                 continue
 
             examples.append(single_data)
+            counting[opt] += 1
 
         progress_bar.update(len(invpath.path))
+
+    # print the counting of different operation examples, monitor whehter it is balanced.
+    print(counting)
 
     return examples    
             

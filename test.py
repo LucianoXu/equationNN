@@ -70,7 +70,7 @@ if __name__ == '__main__':
 
     args = ModelArgs()
     args.vocab_size = len(term_tokenizer)
-    args.output_size = len(opt_tokenizer) + 1
+    args.output_size = len(opt_tokenizer)
     model = Transformer(args)
 
     logits = model.forward(input.unsqueeze(0), input_mask.unsqueeze(0), [pos_inst])

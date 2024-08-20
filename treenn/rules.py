@@ -150,8 +150,8 @@ inverse_table = {
 }
 
 opt_tokenizer = {
-    rule_comm: 1,
-    rule_assoc1: 2,
-    rule_assoc2: 3,
-    rule_eq_reduce: 4
+    rule_comm: 0,
+    rule_assoc1: 1,
+    rule_assoc2: 2,
+    rule_eq_reduce: 3
 }

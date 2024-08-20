@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from .labelled import PosInst
 
 class InverseDataset(Dataset):
-    def __init__(self, data: list[tuple[list[int], list[tuple[int, ...]], PosInst, list[int]]], seq_len):
+    def __init__(self, data: list[tuple[list[int], list[tuple[int, ...]], PosInst, tuple[int, int]]], seq_len):
         super().__init__()
         # seq_len is the length of the sequence (used for padding)
         self.seq_len = seq_len
@@ -38,18 +38,7 @@ class InverseDataset(Dataset):
 
         # get the mask for padding
         input_mask = (input_encoding != self.pad_token).int().unsqueeze(0).unsqueeze(0) # (1, 1, seq_len)
-
-        label = torch.tensor(target_data, dtype=torch.int64)
-
-        # pad the label
-        label = torch.cat(
-            [
-                label, 
-                torch.tensor([0] * enc_num_padding_tokens, dtype=torch.int64)
-            ],
-            dim=0,
-        )
-        
+        label = torch.tensor(target_data, dtype = torch.int64)
 
         return {
             "input" : input_encoding,

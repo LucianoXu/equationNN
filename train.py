@@ -8,6 +8,20 @@ from model import *
 
 from torch.utils.tensorboard import SummaryWriter
 
+# Find the latest weights file in the weights folder
+def latest_weights_file_path(config):
+    model_folder = f"{config['datasource']}_{config['model_folder']}"
+    model_filename = f"{config['model_basename']}*"
+    weights_files = list(Path(model_folder).glob(model_filename))
+    if len(weights_files) == 0:
+        return None
+    weights_files.sort()
+    return str(weights_files[-1])
+
+def get_weights_file_path(config, epoch: str):
+    model_folder = f"{config['datasource']}_{config['model_folder']}"
+    model_filename = f"{config['model_basename']}{epoch}.pt"
+    return str(Path('.') / model_folder / model_filename)
 
 def greedy_decode(model, tree: Tree, max_height, width, max_length, device='cpu'):
     '''
@@ -20,12 +34,8 @@ def greedy_decode(model, tree: Tree, max_height, width, max_length, device='cpu'
 
         logits = model.forward(input, mask, pos_instruct)
 
-        # drop the identity operation
-        logits[:, 0, ...] -= 1e9
-
         # select the most probable operation for every node token
-        token_prob = logits.max(dim=1)
-        token_choice = torch.argmax(logits, dim=1)
+        token_prob, token_choice = torch.max(logits, dim=1)
 
 
         # choose the most probable token
@@ -95,6 +105,9 @@ def train_model(config, modelArgs: ModelArgs):
     train_dataloader, val_dataloader = get_dataloader(config)
 
     model = Transformer(modelArgs).to(device)
+    
+    # print the parameter number of model
+    print(f"Model has {sum(p.numel() for p in model.parameters())} parameters")
 
     # Tensorboard
     writer = SummaryWriter(config['experiment_name'])
@@ -115,6 +128,8 @@ def train_model(config, modelArgs: ModelArgs):
     else:
         print('No model to preload, starting from scratch')
 
+
+    # create a weighted cross entropy loss function
     loss_fn = nn.CrossEntropyLoss().to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
@@ -132,8 +147,11 @@ def train_model(config, modelArgs: ModelArgs):
             # Compare the output with the label
             label = batch['label'].to(device) # (B, seq_len)
 
-            # Compute the loss using a simple cross entropy
-            loss = loss_fn(logits_output, label)
+            # Compute the loss. the loss only results from the position of operation label
+            pred = logits_output.transpose(1, 2)[range(logits_output.shape[0]), label[:, 0]]
+
+            loss = loss_fn(pred, label[:, 1])
+            
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
 
             # Log the loss
@@ -153,37 +171,74 @@ def train_model(config, modelArgs: ModelArgs):
         # run_validation(model, val_dataloader, tokenizer_src, tokenizer_tgt, config['seq_len'], device, lambda msg: batch_iterator.write(msg), global_step, writer)
 
         # Save the model at the end of every epoch
-        # model_filename = get_weights_file_path(config, f"{epoch:02d}")
-        # torch.save({
-        #     'epoch': epoch,
-        #     'model_state_dict': model.state_dict(),
-        #     'optimizer_state_dict': optimizer.state_dict(),
-        #     'global_step': global_step
-        # }, model_filename)
+        model_filename = get_weights_file_path(config, f"{epoch:02d}")
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'global_step': global_step
+        }, model_filename)
 
-    # evaluate the result
-    t = parse("(a+b)+a=(a+b)+a")
-    print(greedy_decode(model, t, 10, 2, None))
 
+def load_model(config, modelArgs: ModelArgs):
+
+    device = "cpu"
+    device = torch.device(device)
+
+    # Make sure the weights folder exists
+    Path(f"{config['datasource']}_{config['model_folder']}").mkdir(parents=True, exist_ok=True)
+
+    train_dataloader, val_dataloader = get_dataloader(config)
+
+    model = Transformer(modelArgs).to(device)
+    
+    # print the parameter number of model
+    print(f"Model has {sum(p.numel() for p in model.parameters())} parameters")
+
+    # Tensorboard
+
+    # If the user specified a model to preload before training, load it
+    initial_epoch = 0
+    global_step = 0
+    preload = config['preload']
+    model_filename = latest_weights_file_path(config) if preload == 'latest' else get_weights_file_path(config, preload) if preload else None
+    if model_filename:
+        print(f'Preloading model {model_filename}')
+        state = torch.load(model_filename)
+        model.load_state_dict(state['model_state_dict'])
+        initial_epoch = state['epoch'] + 1
+        global_step = state['global_step']
+    else:
+        print('No model to preload, starting from scratch')
+
+
+    return model
 
 import warnings
 
 if __name__ == '__main__':
     warnings.filterwarnings("ignore")
     config = {
-        'height': 5,
+        'height': 3,
         'max_height': 20,
-        'path_length': 10,
-        'n': 2000,
+        'path_length': 1,
+        'n': 20000,
         'max_length': 100,
-        'batch_size': 32,
+        'batch_size': 192,
         'lr': 1e-4,
-        'num_epochs': 1,
-        'experiment_name': 'logs',
+        'num_epochs': 5,
+
         'datasource': 'thread',
-        'model_folder': 'transformer'
+        'model_basename': 'treenn_',
+        'model_folder': 'weights',
+        'preload': 'latest',
+        'experiment_name': 'runs/treenn',
     }
-    args = ModelArgs()
+    args = ModelArgs(
+        dim = 32,
+        n_layers = 3,
+        n_heads = 4,
+    )
     args.vocab_size = len(term_tokenizer)
-    args.output_size = len(opt_tokenizer) + 1
+    args.output_size = len(opt_tokenizer)
     train_model(config, args)
