@@ -36,15 +36,23 @@ def test_RoPE_example():
 
 def test_model_forward():
 
+    x = synthesize_example_thread(5, 20, 10, 1000, max_length=100)
+
+    ds = InverseDataset(x, 100)
+    example = ds[0]
+    print(example)
+    input = example['input']
+    input_mask = example['input_mask']
+    pos_inst = example['pos_inst'] 
+    label = example['label']
+
     args = ModelArgs()
     args.vocab_size = len(term_tokenizer)
-    args.output_size = len(opt_tokenizer)
+    args.output_size = len(opt_tokenizer) + 1
     model = Transformer(args)
 
-    term = parse("a+(a+b)")
-
-    term_data, pos_instruct = get_model_input_from_term(term, 3, 3, term_tokenizer)
-    model.forward(torch.tensor([term_data]), [pos_instruct])
-
-
-
+    logits = model.forward(input.unsqueeze(0), input_mask.unsqueeze(0), [pos_inst])
+    
+    criterion = nn.CrossEntropyLoss()
+    loss = criterion(logits, label.unsqueeze(0))
+    print(loss)

@@ -115,7 +115,7 @@ def apply_rotary_embeddings_instructions(
     '''
     Hinstructs_batch = [instruct[0] for instruct in pos_instructs]
     Binstructs_batch = [instruct[1] for instruct in pos_instructs]
-    for i in range(len(Hinstructs_batch)):
+    for i in range(len(Hinstructs_batch[0])):
         # process all the H-instructions
         Hinstruct = [[(batch_i, x) for x in Hinstructs_batch[batch_i][i]] for batch_i in range(len(Hinstructs_batch))]
         Hinstruct = list(itertools.chain(*Hinstruct))
@@ -123,7 +123,7 @@ def apply_rotary_embeddings_instructions(
         x = apply_rotary_embeddings_H(x, freqs[1], Hinstruct, device=device)
         
         # process all the B-instructions
-        for b in range(len(Binstructs_batch[i])):
+        for b in range(len(Binstructs_batch[0][i])):
             Binstruct = [[(batch_i, x) for x in Binstructs_batch[batch_i][i][b]] for batch_i in range(len(Binstructs_batch))]
             Binstruct = list(itertools.chain(*Binstruct))
             x = apply_rotary_embeddings_B(x, freqs[b+1], Binstruct, device=device)
@@ -185,6 +185,7 @@ class SelfAttention(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
+        masks: torch.Tensor,
         pos_instructs: list[PosInst],
         freqs_complex: torch.Tensor
     ):
@@ -218,8 +219,11 @@ class SelfAttention(nn.Module):
 
         # (B, H, Seq_Len, Head_Dim) @ (B, H, Head_Dim, Seq_Len) -> (B, H, Seq_Len, Seq_Len)
         scores = torch.matmul(xq, xk.transpose(2, 3)) / math.sqrt(self.head_dim)
+        # apply the mask
+        scores = scores.float().masked_fill_(masks == 0, -1e9)
         # (B, H, Seq_Len, Seq_Len) -> (B, H, Seq_Len, Seq_Len)
-        scores = F.softmax(scores.float(), dim=-1).type_as(xq)
+        scores = F.softmax(scores, dim=-1).type_as(xq)
+
 
         # (B, H, Seq_Len, Seq_Len) @ (B, H, Seq_Len, Head_Dim) -> (B, H, Seq_Len, Head_Dim)
         output = torch.matmul(scores, xv)
@@ -279,11 +283,12 @@ class EncoderBlock(nn.Module):
     
     def forward(self, 
                 x: torch.Tensor, 
+                masks: torch.Tensor,
                 pos_instructs: list[PosInst],
                 freqs_complex: torch.Tensor):
         # (B, Seq_Len, Dim) + (B, Seq_Len, Dim) --> (B, Seq_Len, Dim)
         h = x + self.attention.forward(
-            self.attention_norm(x), pos_instructs, freqs_complex
+            self.attention_norm(x), masks, pos_instructs, freqs_complex
         )
         # (B, Seq_Len, Dim) + (B, Seq_Len, Dim) --> (B, Seq_Len, Dim)
         out = h + self.feed_forward.forward(self.ffn_norm(h))
@@ -322,6 +327,7 @@ class Transformer(nn.Module):
         
     def forward(self, 
                 tokens: torch.Tensor, 
+                masks: torch.Tensor,
                 pos_instructs: list[PosInst]):
 
         # (B, Seq_Len) -> (B, Seq_Len, Dim)
@@ -329,9 +335,12 @@ class Transformer(nn.Module):
         
         # Consecutively apply all the encoder layers
         for layer in self.layers:
-            h = layer(h, pos_instructs, self.freqs_complex)
+            h = layer(h, masks, pos_instructs, self.freqs_complex)
 
         h = self.norm(h)
 
-        output = self.output(h).float()
+        # the final result shape suits the cross entropy loss
+        # (B, Seq_Len, Dim) -> (B, Seq_Len, Output_Size) -> (B, Output_Size, Seq_Len)
+        output = self.output(h).float().transpose(1, 2)
+
         return output

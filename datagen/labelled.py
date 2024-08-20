@@ -44,7 +44,7 @@ def pos_list2encoding_instruction(pos_list: list[tuple[int, ...]],
 
 def get_model_input_from_term(
         term: Tree, max_height: int, width: int,
-        term_tokenizer: dict[str, int]) -> tuple[list[int], PosInst]:
+        term_tokenizer: dict[str, int]) -> tuple[list[int], list[tuple[int, ...]], PosInst]:
     
     node_list, pos_list, _ = term.flatten()
 
@@ -53,12 +53,33 @@ def get_model_input_from_term(
     pos_instruct = pos_list2encoding_instruction(
         pos_list, height=max_height, width=width)
     
-    return term_data, pos_instruct
+    return term_data, pos_list, pos_instruct
+
+def model_input_add_padding(
+        term_data: list[int], pos_list: list[tuple[int, ...]], pos_instruct: PosInst,
+        max_length: Optional[int] = None, device = 'cpu') -> tuple[torch.Tensor, list[tuple[int, ...]], list[PosInst], torch.Tensor]:
+    '''
+    add padding (0) to the model input, add mask tensor to the output
+    transform the output to suit the input format of transformer
+    return: input encoding, position list, position encoding instruction, mask
+    '''
+    if max_length is None:
+        max_length = len(term_data)
+
+    term_data = term_data + [0] * (max_length - len(term_data))
+    input = torch.tensor(term_data, dtype=torch.int64).to(device).unsqueeze(0)
+
+    mask = [1] * len(term_data) + [0] * (max_length - len(term_data))
+    mask = torch.tensor(mask, dtype=torch.int64).to(device).view((1,1,1,-1))
+
+    return input, pos_list, [pos_instruct], mask
+    
+
 
 def get_single_example_data(
         term: Tree, max_height: int, width: int,
         opt: TreeOpt, pos: tuple[int, ...],
-        term_tokenizer: dict[str, int], opt_tokenizer: dict[TreeOpt, int]) -> tuple[list[int], PosInst, list[int]]:
+        term_tokenizer: dict[str, int], opt_tokenizer: dict[TreeOpt, int]) -> tuple[list[int], list[tuple[int, ...]], PosInst, list[int]]:
     '''
     Transform one operation into the single supervised learning data example.
 
@@ -78,14 +99,17 @@ def get_single_example_data(
 
     pos_instruct = pos_list2encoding_instruction(pos_list, height=max_height, width=width)
 
-    return term_data, pos_instruct, target_data
+    return term_data, pos_list, pos_instruct, target_data
 
 
-def synthesize_example_thread(height: int, max_height: int, path_length: int, n: int) -> list[tuple[list[int], PosInst, list[int]]]:
+def synthesize_example_thread(height: int, max_height: int, path_length: int, n: int,
+                              max_length: Optional[int] = None) -> list[tuple[list[int], list[tuple[int, ...]], PosInst, list[int]]]:
     '''
     synthesize n examples for the thread with the maximum height
+    path_length: the maximum length of every random rewriting path
+    max_length: if not None, will filter out the examples with the length greater than max_length
     '''
-    examples: list[tuple[list[int], PosInst, list[int]]] = []
+    examples: list[tuple[list[int], list[tuple[int, ...]], PosInst, list[int]]] = []
 
     random_rule = [rule_comm, rule_assoc1, rule_assoc2]
 
@@ -96,18 +120,24 @@ def synthesize_example_thread(height: int, max_height: int, path_length: int, n:
         path = get_head(height)
         
         # construct the random rewriting path
-        random_apply_n(path, random_rule, 10)
+        random_apply_n(path, random_rule, path_length)
 
         # get the supervised learning data
         invpath = path.get_inverse(inverse_table)
 
         for step in invpath.path:
             term, opt, pos = step
-            examples.append(get_single_example_data(
+            single_data = get_single_example_data(
                 term, max_height, 2,
                 opt, pos, 
                 term_tokenizer, opt_tokenizer
-            ))
+            )
+
+            # skip the example if the length is too long
+            if max_length is not None and len(single_data[0]) > max_length:
+                continue
+
+            examples.append(single_data)
 
         progress_bar.update(len(invpath.path))
 
