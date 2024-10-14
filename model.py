@@ -1,102 +1,4 @@
 
-from .scenario import *
-import tqdm
-
-from torch.utils.data import Dataset
-
-
-class ExampleDataset(Dataset):
-    def __init__(self, 
-                 number_of_examples: int, 
-                 max_steps: int,
-                 max_len: int = 256):
-        self.number_of_examples = number_of_examples
-        self.max_steps = max_steps
-        self.max_len = max_len
-
-        # Generate the examples
-        self.examples = []
-
-        for _ in tqdm.trange(number_of_examples//max_steps + 1):
-            path = gen_example(max_steps).get_inverse(INV_GEN_RULES)
-            for (term, opt, pos) in path.path:
-                prompt = encode_example(str(term) + "<ACT>" + RULE_NAMES[opt]+ " " + str(pos))
-                text = torch.tensor([TOKENS['<SOS>']] + prompt + [TOKENS['<PAD>']] * (max_len - len(prompt) - 1))
-                label = torch.tensor(prompt + [TOKENS['<EOS>']] + [TOKENS['<PAD>']] * (max_len - len(prompt) - 1))
-                mask = torch.tensor([1] * (len(prompt)+1) + [0] * (max_len - len(prompt) - 1))
-                self.examples.append((text, label, mask))
-
-    def __len__(self):
-        """
-        Returns the size of the dataset.
-        """
-        return self.number_of_examples
-
-    def __getitem__(self, idx):
-        """
-        Generates one example.
-        """
-        return self.examples[idx]
-    
-TOKENS = {
-    '(': 0,
-    ')': 1,
-    '+': 2,
-    '~': 3,
-    '0': 4,
-    'a': 5,
-    'b': 6,
-    'c': 7,
-    'd': 8,
-    'COMM': 9,
-    'ASSOC1C': 10,
-    'ASSOC2C': 11,
-    'ADDr': 12,
-    'ADDl': 13,
-    'ADDNEG': 14,
-    '1': 15,
-    ',': 16,
-    '<ACT>': 17,    # the special token for the action
-    '<PAD>': 18,    # the special token for padding
-    '<EOS>': 19,    # the special token for the end of the sequence
-    '<SOS>': 20,    # the special token for the start of the sequence
-}
-
-def encode_example(txt: str):
-    """
-    return the encoding of the example
-    """
-    encoding: list[int] = []
-    while txt:
-        while txt[0] == ' ':
-            txt = txt[1:]
-        for token in TOKENS:
-            if txt.startswith(token):
-                encoding.append(TOKENS[token])
-                txt = txt[len(token):]
-                break
-        else:
-            raise ValueError(f"Unknown token: {txt}")
-    
-    return encoding
-
-def decode_example(encoding: list[int]):
-    """
-    return the decoding of the example
-    """
-    txt = ""
-    for token in encoding:
-        for key, value in TOKENS.items():
-            if value == token:
-                txt += key
-                break
-        else:
-            raise ValueError(f"Unknown token: {token}")
-    return txt
-
-##########################################################
-# model definition
-
 import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -104,11 +6,12 @@ from typing import Optional, Tuple
 import torch
 import torch.nn.functional as F
 from torch import nn
+from tokenizer import TOKENS, tok_decode, tok_encode,  token2id
 
 
 @dataclass
 class ModelArgs:
-    dim: int = 256
+    dim: int = 512
     n_layers: int = 32
     n_heads: int = 8
     n_kv_heads: Optional[int] = None
@@ -367,17 +270,49 @@ class Transformer(nn.Module):
         output = self.output(h).float()
         return output
 
+
+def generate(model, code: str, max_len: int = 256, temperature: float = 1.0) -> str:
+    '''
+    Generate code using the model, with temperature scaling.
+    
+    Parameters:
+    - model: the language model used for code generation
+    - code: the initial code to prompt the generation
+    - max_len: the maximum length of the generated sequence (default is 256)
+    - temperature: the temperature coefficient to control randomness (default is 1.0)
+    '''
+
+    encoding = torch.tensor([tok_encode("<SOS> " +code)])
+
+    output = []
+    
+    # autoregressive generation
+    with torch.no_grad():
+        model.eval()
+        for i in range(max_len):
+            logits = model(encoding)
+
+            # Scale the logits by the temperature
+            logits = logits[0, -1, :] / temperature
+            
+            # Convert logits to probabilities using softmax
+            probabilities = F.softmax(logits, dim=-1)
+
+            # Sample the next token from the probability distribution
+            next_token = torch.multinomial(probabilities, num_samples=1).item()
+
+            output.append(next_token)
+
+            if output[-1] == token2id['<EOS>']:
+                # remove the <EOS> token
+                output = output[:-1]
+                break
+            encoding = torch.cat((encoding, torch.tensor([[output[-1]]])), dim=1)
+
+    return tok_decode(output)
+
+
 if __name__ == "__main__":
-    dataset = ExampleDataset(2000, 8, 96)
-    print(len(dataset))
-    print(dataset[0])
-
-    encoding = dataset[0][0]
-    print(decode_example(encoding))
-
-    encoding = dataset[0][1]
-    print(decode_example(encoding))
-
     model = Transformer(ModelArgs(), "mps")
     
     # output the number of parameters

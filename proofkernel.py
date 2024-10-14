@@ -30,18 +30,17 @@ class ProofKernel:
         # parse the action
         encoding = tok_encode(action)
 
-        # extract the command
-        if encoding[0] == token2id['L2R']:
-            rule = r_L2R
-        elif encoding[0] == token2id['R2L']:
-            rule = r_R2L
-        else:
-            return -1.
-        
-        pos = tuple(int(id2token[id]) for id in encoding[1:])
-
         # try to apply the command. any exception will be caught and return -1
         try:
+            if encoding[0] == token2id['L2R']:
+                rule = r_L2R
+            elif encoding[0] == token2id['R2L']:
+                rule = r_R2L
+            else:
+                return -1.
+            
+            pos = tuple(int(id2token[id]) for id in encoding[1:])
+
             res = self.equation.apply_at(rule, self.sig, pos)
         except:
             return -1.

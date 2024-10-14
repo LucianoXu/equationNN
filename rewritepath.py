@@ -16,7 +16,7 @@ class RewritePath:
         '''
         return the current tree
         '''
-        if self.path == ():
+        if not self.path:
             return self.current
         else:
             return self.path[0][0]

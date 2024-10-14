@@ -27,6 +27,9 @@ def tok_encode(txt: str) -> list[int]:
     while txt:
         while txt[0] == ' ' or txt[0] == '\n' or txt[0] == '\t':
             txt = txt[1:]
+            if not txt:
+                return encoding
+
         for token in TOKENS:
             if txt.startswith(token):
                 encoding.append(token2id[token])
