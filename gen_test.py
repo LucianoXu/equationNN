@@ -2,15 +2,15 @@
 from model import *
 from toplevel import *
 
-if __name__ == '__main__':
+def forever_test():
     # load the model
-    device = 'cpu'
+    device = 'mps'
     SEQ_LEN = 96
 
     model_args = ModelArgs()
     model_args.max_seq_len = SEQ_LEN
     model = Transformer(ModelArgs(), device)
-    model.load_state_dict(torch.load('trained_parameters.pth', weights_only=True, map_location=device))
+    model.load_state_dict(torch.load('trained_parameters_actonly.pth', weights_only=True, map_location=device))
 
     model_agent = get_model_agent(model, max_len=256, T=0.4)
 
@@ -27,3 +27,33 @@ if __name__ == '__main__':
         prove(kernel, model_agent)
 
         input()
+
+
+def single_test(term: Term):
+# load the model
+    device = 'mps'
+    SEQ_LEN = 96
+
+    model_args = ModelArgs()
+    model_args.max_seq_len = SEQ_LEN
+    model = Transformer(ModelArgs(), device)
+    model.load_state_dict(torch.load('trained_parameters_actonly.pth', weights_only=True, map_location=device))
+
+    model_agent = get_model_agent(model, max_len=256, T=0.6)
+
+    kernel = ProofKernel(term)
+    prove(kernel, model_agent)
+
+
+if __name__ == '__main__':
+    # SUCCEED 307 x * x = x * (x * x)
+    term = parser.parse_term('((x * x) = (x * (x * x)))')
+    # single_test(term)
+
+    # FAIL 4283 x * (x * y) = x * (y * x)
+    term = parser.parse_term('((x * (x * y)) = (x * (y * x)))')
+    # single_test(term)
+
+    # 3257 x * x = x * (x * (x * x))
+    term = parser.parse_term('((x * x) = (x * (x * (x * x))))')
+    single_test(term)

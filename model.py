@@ -281,8 +281,8 @@ def generate(model, code: str, max_len: int = 256, temperature: float = 1.0) -> 
     - max_len: the maximum length of the generated sequence (default is 256)
     - temperature: the temperature coefficient to control randomness (default is 1.0)
     '''
-
-    encoding = torch.tensor([tok_encode("<SOS> " +code)])
+    device = model.device
+    encoding = torch.tensor([tok_encode("<SOS> " +code)], device=device)
 
     output = []
     
@@ -307,7 +307,7 @@ def generate(model, code: str, max_len: int = 256, temperature: float = 1.0) -> 
                 # remove the <EOS> token
                 output = output[:-1]
                 break
-            encoding = torch.cat((encoding, torch.tensor([[output[-1]]])), dim=1)
+            encoding = torch.cat((encoding, torch.tensor([[output[-1]]], device = device)), dim=1)
 
     return tok_decode(output)
 

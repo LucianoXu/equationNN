@@ -9,13 +9,13 @@ from model import ModelArgs, Transformer
 def train():
     device = 'mps'
     SEQ_LEN = 96
-    BATCH_SIZE = 16
+    BATCH_SIZE = 48
     DATA_LEN = 100000
     MAX_STEP = 7
     MAX_HEIGHT = 4
-    MODEL_PATH = 'trained_parameters.pth'
-    CHECK_POINT = 'trained_parameters.pth'
-    # CHECK_POINT = None
+    MODEL_PATH = 'trained_parameters_test.pth'
+    # CHECK_POINT = 'trained_parameters_actonly.pth'
+    CHECK_POINT = None
 
     # Step 1
     dataset = ExampleDataset(DATA_LEN, MAX_STEP, MAX_HEIGHT)
@@ -56,6 +56,9 @@ def train():
             total_loss = 0
 
             for i, batch in enumerate(epoch_iterator):
+                if i % 100 == 0:
+                    torch.mps.empty_cache()
+
                 # Move batch data to the GPU (or CPU)
                 text, label, mask = batch
                 text = text.to(device)
