@@ -15,7 +15,7 @@ def forever_test():
 
     # run the toplevel prover and have fun!
     while True:
-        path = gen_example(5, 3)
+        path = gen_example(3, 3)
         term = path.current
 
         # skip the trivial case

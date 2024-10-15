@@ -15,7 +15,7 @@ def rl_train(
         device: str = 'cpu', 
         num_steps: int = 200, 
         batch_size: int = 16, 
-        max_step: int = 6, 
+        max_step: int = 3, 
         max_height: int = 3,
         rl_step_limit: int = 20,
         rl_temperature: float = 0.6,):
@@ -45,16 +45,13 @@ def rl_train(
             traces = solve_kernel_group(model, list(examples), rl_step_limit, rl_temperature)
 
             # STEP 2: calculate the pseudo loss
-            print("Calculating average total reward...", end='')
             total_reward = 0.
             # calculate baseline (average total reward)
             for trace in traces:
                 for i in range(len(trace)):
                     total_reward += trace[i][2]
             avg_total_reward = total_reward / len(traces)
-            print("Done.")
 
-            print("Calculating pseudo loss...", end='')
             J = torch.tensor(0.0, device=device)
 
             for trace in traces:
@@ -68,15 +65,11 @@ def rl_train(
 
                     J += log_prob * (reward_to_go - avg_total_reward)
             J = -J / len(traces)
-            print("Done.")
 
 
             # STEP 3: Backward pass and optimization
-            print("Calculating gradients...", end='')
             J.backward()        # Backward pass
-            print("Backpropagation...", end='')
             optimizer.step()       # Update weights
-            print('Done.')
 
             # Logging
             print(f"Pseudo Loss: {J.item()}, Average Total Reward: {total_reward / len(traces)}")
