@@ -103,7 +103,7 @@ def batch_generation(model, beams: list[str], T: float = 1.0) -> tuple[list[str]
 
             # update the beams that are not finished
             else:
-                input_ids[i].append(next_tokens[i])
+                input_ids[idx].append(next_tokens[i])
 
     return outputs, log_probs
 

@@ -36,10 +36,15 @@ class ExampleDataset(Dataset):
             path = gen_example(max_step, max_height).get_inverse(INV_GEN_RULES)
 
             for (term, opt, pos) in path.path:
+                # if LHS = RHS, skip
+                if term.args[0] == term.args[1]:
+                    continue
+
                 prompt = tuple(tok_encode(term.sig_str(self.sig) + " : " + RULE_NAMES[opt]+ " " + " ".join(str(p) for p in pos)))
                 input = (SOS_ID, ) + prompt
                 label = prompt + (EOS_ID, )
 
+                # check the length
                 if len(input) > max_len:
                     continue
 

@@ -17,9 +17,7 @@ def get_model_agent(model, max_len: int = 256, T: float = 0.6) -> Callable[[Proo
     create the model agent with the model
     '''
     def model_agent(kernel: ProofKernel) -> str:
-        # get the model input
-        term = kernel.equation
-        return generate(model, term.sig_str(signature) + " : ", max_len, T)
+        return generate(model, kernel.state, max_len, T)
 
     return model_agent
 
@@ -59,7 +57,7 @@ Rules:
     last_reward = 0.
     total_reward = 0.
     while True:
-        prompt = f'Step: {kernel.step_count}\t| Last Reward: {last_reward:.2f}\t| Total Reward: {total_reward:.2f}\t| {kernel.equation.sig_str(kernel.sig)} : '
+        prompt = f'Step: {kernel.step_count}\t| Last Reward: {last_reward:.2f}\t| Total Reward: {total_reward:.2f}\t| {kernel.state}'
         print(prompt)
 
         if kernel.is_stopped:
