@@ -3,7 +3,8 @@
 from typing import Callable
 from proofkernel import *
 from tokenizer import *
-from model import generate
+from generate import generate
+from scenario import signature
 
 def human_agent(kernel: ProofKernel) -> str:
     '''
@@ -18,7 +19,7 @@ def get_model_agent(model, max_len: int = 256, T: float = 0.6) -> Callable[[Proo
     def model_agent(kernel: ProofKernel) -> str:
         # get the model input
         term = kernel.equation
-        return generate(model, str(term) + " : ", max_len, T)
+        return generate(model, term.sig_str(signature) + " : ", max_len, T)
 
     return model_agent
 

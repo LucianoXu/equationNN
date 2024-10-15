@@ -4,6 +4,7 @@ import torch
 from scenario import *
 import tqdm
 
+from scenario import signature
 from torch.utils.data import Dataset
 from tokenizer import tok_encode, token2id
 
@@ -15,8 +16,10 @@ class ExampleDataset(Dataset):
     def __init__(self, 
                  number_of_examples: int, 
                  max_step: int,
-                 max_height: int):
-                
+                 max_height: int,
+                 max_len: int = 256):
+        
+        self.sig = signature
         self.number_of_examples = number_of_examples
         self.max_step = max_step
         self.max_height = max_height
@@ -33,9 +36,12 @@ class ExampleDataset(Dataset):
             path = gen_example(max_step, max_height).get_inverse(INV_GEN_RULES)
 
             for (term, opt, pos) in path.path:
-                prompt = tuple(tok_encode(str(term) + " : " + RULE_NAMES[opt]+ " " + " ".join(str(p) for p in pos)))
+                prompt = tuple(tok_encode(term.sig_str(self.sig) + " : " + RULE_NAMES[opt]+ " " + " ".join(str(p) for p in pos)))
                 input = (SOS_ID, ) + prompt
                 label = prompt + (EOS_ID, )
+
+                if len(input) > max_len:
+                    continue
 
                 example = (input, label)
                 if example in examples_set:
@@ -60,33 +66,36 @@ class ExampleDataset(Dataset):
         return self.examples[idx]
     
 
-def collate_fn(batch):
+def get_collate_fn(device: str = 'cpu'):
+    def collate_fn(batch):
 
-    PAD_ID = token2id['<PAD>']
-    COLON_ID = token2id[':']
+        PAD_ID = token2id['<PAD>']
+        COLON_ID = token2id[':']
 
-    # Find the longest sequence in the batch
-    batch_max_len = max([len(x[0]) for x in batch])
+        # Find the longest sequence in the batch
+        batch_max_len = max([len(x[0]) for x in batch])
 
-    padded_inputs = []
-    padded_labels = []
-    masks = []
+        padded_inputs = []
+        padded_labels = []
+        masks = []
 
-    for input, label in batch:
+        for input, label in batch:
 
-        padded_input = list(input) + [PAD_ID] * (batch_max_len - len(input))
-        padded_inputs.append(padded_input)
+            padded_input = list(input) + [PAD_ID] * (batch_max_len - len(input))
+            padded_inputs.append(padded_input)
 
-        padded_label = list(label) + [PAD_ID] * (batch_max_len - len(input))
-        padded_labels.append(padded_label)
+            padded_label = list(label) + [PAD_ID] * (batch_max_len - len(input))
+            padded_labels.append(padded_label)
 
-        # only predict the tokens after the colon
-        colon_idx = padded_label.index(COLON_ID)
-        
-        mask = [0] * (colon_idx + 1) + [1] * (len(input) - colon_idx - 1) + [0] * (batch_max_len - len(input))
-        masks.append(mask)
+            # only predict the tokens after the colon
+            colon_idx = padded_label.index(COLON_ID)
+            
+            mask = [0] * (colon_idx + 1) + [1] * (len(input) - colon_idx - 1) + [0] * (batch_max_len - len(input))
+            masks.append(mask)
 
-    return torch.tensor(padded_inputs), torch.tensor(padded_labels), torch.tensor(masks)
+        return torch.tensor(padded_inputs, device = device), torch.tensor(padded_labels, device = device), torch.tensor(masks, device = device)
+    
+    return collate_fn
 
 if __name__ == "__main__":
     dataset = ExampleDataset(2000000, 8, 4)

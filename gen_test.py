@@ -2,6 +2,8 @@
 from model import *
 from toplevel import *
 
+model_checkpint = 'trained_parameters.pth'
+
 def forever_test():
     # load the model
     device = 'mps'
@@ -10,7 +12,7 @@ def forever_test():
     model_args = ModelArgs()
     model_args.max_seq_len = SEQ_LEN
     model = Transformer(ModelArgs(), device)
-    model.load_state_dict(torch.load('trained_parameters_actonly.pth', weights_only=True, map_location=device))
+    model.load_state_dict(torch.load(model_checkpint, weights_only=True, map_location=device))
 
     model_agent = get_model_agent(model, max_len=256, T=0.4)
 
@@ -30,14 +32,14 @@ def forever_test():
 
 
 def single_test(term: Term):
-# load the model
+    # load the model
     device = 'mps'
     SEQ_LEN = 96
 
     model_args = ModelArgs()
     model_args.max_seq_len = SEQ_LEN
     model = Transformer(ModelArgs(), device)
-    model.load_state_dict(torch.load('trained_parameters_actonly.pth', weights_only=True, map_location=device))
+    model.load_state_dict(torch.load(model_checkpint, weights_only=True, map_location=device))
 
     model_agent = get_model_agent(model, max_len=256, T=0.6)
 
@@ -46,6 +48,8 @@ def single_test(term: Term):
 
 
 if __name__ == '__main__':
+    forever_test()
+
     # SUCCEED 307 x * x = x * (x * x)
     term = parser.parse_term('((x * x) = (x * (x * x)))')
     # single_test(term)

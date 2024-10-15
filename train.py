@@ -3,22 +3,21 @@ from torch.utils.data import DataLoader
 from torch.optim.adamw import AdamW
 from tqdm import tqdm
 
-from data import ExampleDataset, collate_fn
+from data import ExampleDataset, get_collate_fn
 from model import ModelArgs, Transformer
 
 def train():
     device = 'mps'
     SEQ_LEN = 96
-    BATCH_SIZE = 48
+    BATCH_SIZE = 32
     DATA_LEN = 100000
     MAX_STEP = 7
     MAX_HEIGHT = 4
-    MODEL_PATH = 'trained_parameters_test.pth'
-    # CHECK_POINT = 'trained_parameters_actonly.pth'
-    CHECK_POINT = None
+    MODEL_PATH = 'trained_parameters.pth'
+    CHECK_POINT = 'trained_parameters.pth'
+    # CHECK_POINT = None
+    num_epochs = 10
 
-    # Step 1
-    dataset = ExampleDataset(DATA_LEN, MAX_STEP, MAX_HEIGHT)
 
     # Step 2
     model_args = ModelArgs()
@@ -27,27 +26,24 @@ def train():
     if CHECK_POINT:
         model.load_state_dict(torch.load(CHECK_POINT, map_location=device, weights_only=True))
 
-    # Step 3
-    train_dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
-
     # Step 5: Set up the optimizer
     optimizer = AdamW(model.parameters(), lr=5e-5)
 
-    # Step 6: Move model to GPU if available
-    device = torch.device(device)
-    model.to(device)
-
     # Step 7: Custom Training Loop
-    num_epochs = 3
     model.train()  # Set model to training mode
 
     # Define loss function
     loss_fn = torch.nn.CrossEntropyLoss(reduction='none')
 
-
     try:
         for epoch in range(num_epochs):
+
             print(f"Epoch {epoch + 1}/{num_epochs}")
+
+            # generate training data
+            dataset = ExampleDataset(DATA_LEN, MAX_STEP, MAX_HEIGHT, SEQ_LEN)
+            train_dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=get_collate_fn(device))
+
             
             # Use tqdm for progress bar
             epoch_iterator = tqdm(train_dataloader, desc="Training", position=0, leave=True)
@@ -56,7 +52,7 @@ def train():
             total_loss = 0
 
             for i, batch in enumerate(epoch_iterator):
-                if i % 100 == 0:
+                if i % 30 == 0:
                     torch.mps.empty_cache()
 
                 # Move batch data to the GPU (or CPU)
@@ -102,7 +98,7 @@ def train():
         print("Interrupted by user.")
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error of type {type(e)} occurred: {e}")
 
     finally:
         torch.save(model.state_dict(), MODEL_PATH)

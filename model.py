@@ -55,8 +55,8 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
 
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
     ndim = x.ndim
-    assert 1 < ndim
-    assert freqs_cis.shape == (x.shape[1], x.shape[-2], 2)
+    assert 1 < ndim, "Input tensor must have at least 2 dimensions"
+    assert freqs_cis.shape == (x.shape[1], x.shape[-2], 2), "Invalid shape input shape: " + str(x.shape) + " cannot broadcast with freqs_cis shape: " + str(freqs_cis.shape)
     shape = [d if i == 1 or i == ndim - 2 else 1 for i, d in enumerate(x.shape[:-1])]
     shape += [2]
     return freqs_cis.view(*shape)
@@ -258,9 +258,11 @@ class Transformer(nn.Module):
         h = self.tok_embeddings(tokens)
         freqs_cis = self.freqs_cis[: seqlen]
 
-        mask = torch.full((seqlen, seqlen), float("-inf"))
-        mask = torch.triu(mask, diagonal=1).type_as(h)
-        mask.to(self.device)
+        
+        mask = torch.full((seqlen, seqlen), float("-inf"), device=self.device)
+        mask = torch.triu(mask, diagonal=1)
+        if mask.device.type == torch.device('mps').type:
+            mask = torch.nan_to_num(mask, nan=0.0)
         
 
         for layer in self.layers:
@@ -270,46 +272,6 @@ class Transformer(nn.Module):
         output = self.output(h).float()
         return output
 
-
-def generate(model, code: str, max_len: int = 256, temperature: float = 1.0) -> str:
-    '''
-    Generate code using the model, with temperature scaling.
-    
-    Parameters:
-    - model: the language model used for code generation
-    - code: the initial code to prompt the generation
-    - max_len: the maximum length of the generated sequence (default is 256)
-    - temperature: the temperature coefficient to control randomness (default is 1.0)
-    '''
-    device = model.device
-    encoding = torch.tensor([tok_encode("<SOS> " +code)], device=device)
-
-    output = []
-    
-    # autoregressive generation
-    with torch.no_grad():
-        model.eval()
-        for i in range(max_len):
-            logits = model(encoding)
-
-            # Scale the logits by the temperature
-            logits = logits[0, -1, :] / temperature
-            
-            # Convert logits to probabilities using softmax
-            probabilities = F.softmax(logits, dim=-1)
-
-            # Sample the next token from the probability distribution
-            next_token = torch.multinomial(probabilities, num_samples=1).item()
-
-            output.append(next_token)
-
-            if output[-1] == token2id['<EOS>']:
-                # remove the <EOS> token
-                output = output[:-1]
-                break
-            encoding = torch.cat((encoding, torch.tensor([[output[-1]]], device = device)), dim=1)
-
-    return tok_decode(output)
 
 
 if __name__ == "__main__":
