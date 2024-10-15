@@ -4,6 +4,7 @@ from scenario import *
 from tokenizer import *
 from generate import batch_generation
 from tqdm import tqdm
+import torch
 
 class ProofKernel:
     def __init__(self, equation: Term):
@@ -74,7 +75,7 @@ class ProofKernel:
 
 
 
-def solve_kernel_group(model, examples: list[Term], step_limit: int = 50, T: float = 1.0) -> list[list[tuple[str, float, float]]]:
+def solve_kernel_group(model, examples: list[Term], step_limit: int = 50, T: float = 1.0) -> list[list[tuple[str, torch.Tensor, float]]]:
     '''
     Solve a group of proof kernels for parallel training and evaluation.
 
@@ -90,7 +91,7 @@ def solve_kernel_group(model, examples: list[Term], step_limit: int = 50, T: flo
     kernels = [ProofKernel(eq) for eq in examples]
 
     # proceed the examples
-    traces: list[list[tuple[str, float, float]]] = [[] for _ in range(len(kernels))]
+    traces: list[list[tuple[str, torch.Tensor, float]]] = [[] for _ in range(len(kernels))]
 
     remaining_number = len(kernels)
     progress_bar = tqdm(total=step_limit)

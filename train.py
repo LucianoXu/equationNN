@@ -1,3 +1,4 @@
+from typing import Optional
 import torch
 from torch.utils.data import DataLoader
 from torch.optim.adamw import AdamW
@@ -6,30 +7,24 @@ from tqdm import tqdm
 from data import ExampleDataset, get_collate_fn
 from model import ModelArgs, Transformer
 
-def train():
-    device = 'mps'
-    SEQ_LEN = 96
-    BATCH_SIZE = 32
-    DATA_LEN = 100000
-    MAX_STEP = 7
-    MAX_HEIGHT = 4
-    MODEL_PATH = 'trained_parameters.pth'
-    CHECK_POINT = 'trained_parameters.pth'
-    # CHECK_POINT = None
-    num_epochs = 10
+def train(
+        model_args: ModelArgs, 
+        model_path: str, check_point: Optional[str] = None,
+        device: str = 'cpu', 
+        num_epochs: int = 10, 
+        data_len: int = 100000, 
+        batch_size: int = 32, 
+        max_step: int = 6, 
+        max_height: int = 3,):
 
+    model = Transformer(model_args, device)
+    if check_point:
+        model.load_state_dict(torch.load(check_point, map_location=device, weights_only=True))
 
-    # Step 2
-    model_args = ModelArgs()
-    model_args.max_seq_len = SEQ_LEN
-    model = Transformer(ModelArgs(), device)
-    if CHECK_POINT:
-        model.load_state_dict(torch.load(CHECK_POINT, map_location=device, weights_only=True))
-
-    # Step 5: Set up the optimizer
+    # Set up the optimizer
     optimizer = AdamW(model.parameters(), lr=5e-5)
 
-    # Step 7: Custom Training Loop
+    # Custom Training Loop
     model.train()  # Set model to training mode
 
     # Define loss function
@@ -41,8 +36,8 @@ def train():
             print(f"Epoch {epoch + 1}/{num_epochs}")
 
             # generate training data
-            dataset = ExampleDataset(DATA_LEN, MAX_STEP, MAX_HEIGHT, SEQ_LEN)
-            train_dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=get_collate_fn(device))
+            dataset = ExampleDataset(data_len, max_step, max_height, model_args.max_seq_len)
+            train_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=get_collate_fn(device))
 
             
             # Use tqdm for progress bar
@@ -91,7 +86,7 @@ def train():
             print(f"Epoch {epoch + 1} completed. Average loss: {avg_loss:.4f}")
 
             # Step 11: Save the model and tokenizer
-            torch.save(model.state_dict(), MODEL_PATH)
+            torch.save(model.state_dict(), model_path)
             # tokenizer.save_pretrained("./custom_trained_model")
 
     except KeyboardInterrupt:
@@ -101,9 +96,15 @@ def train():
         print(f"An error of type {type(e)} occurred: {e}")
 
     finally:
-        torch.save(model.state_dict(), MODEL_PATH)
+        torch.save(model.state_dict(), model_path)
 
     print("Training completed and model saved.")
 
 if __name__ == "__main__":
-    train()
+    from small_args import SmallArgs
+    train(
+        SmallArgs(),
+        model_path='small.pth',
+        check_point=None,
+        device='mps'
+    )

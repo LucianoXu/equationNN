@@ -21,7 +21,6 @@ class ModelArgs:
     norm_eps: float = 1e-5
     rope_theta: float = 500000
 
-    max_batch_size: int = 32
     max_seq_len: int = 96
 
 
