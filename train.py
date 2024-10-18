@@ -47,8 +47,6 @@ def train(
             total_loss = 0
 
             for i, batch in enumerate(epoch_iterator):
-                if i % 30 == 0:
-                    torch.mps.empty_cache()
 
                 # Move batch data to the GPU (or CPU)
                 text, label, mask = batch
@@ -106,5 +104,5 @@ if __name__ == "__main__":
         SmallArgs(),
         model_path='small.pth',
         check_point=None,
-        device='mps'
+        device='cuda'
     )

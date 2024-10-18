@@ -33,13 +33,13 @@ if __name__ == '__main__':
     from model import *
     from small_args import SmallArgs
 
-    model = load_model('small_rl.pth', SmallArgs(), 'mps')
+    model = load_model('small_rl.pth', SmallArgs(), 'cuda')
     model.eval()
 
     # construct the examples    
     from data import full_path_examples
-    examples = full_path_examples(500, 5, 3)
+    examples = full_path_examples(5000, 5, 3)
 
     # evaluate the model
-    print(eval(model, list(examples), 30, 0.3, batch_size=500))
+    print(eval(model, list(examples), 30, 0.3, batch_size=1000))
 

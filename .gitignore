@@ -7,3 +7,7 @@ parsetab.py
 events.out.*
 
 *.pth
+
+*.egg-info
+
+*.ipynb_checkpoints

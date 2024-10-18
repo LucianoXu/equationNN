@@ -9,13 +9,13 @@ model_checkpoint = 'trained_parameters.pth'
 def forever_test():
 
     args = SmallArgs()
-    model = load_model('small_rl.pth', args, 'mps')
+    model = load_model('small_rl_4.pth', args, 'cuda')
 
     model_agent = get_model_agent(model, max_len=args.max_seq_len, T=0.4)
 
     # run the toplevel prover and have fun!
     while True:
-        path = gen_example(3, 3)
+        path = gen_example(4, 3)
         term = path.current
 
         # skip the trivial case
@@ -31,7 +31,7 @@ def forever_test():
 def single_test(term: Term):
     # load the model
     args = SmallArgs()
-    model = load_model('small_rl.pth', args, 'mps')
+    model = load_model('small_rl.pth', args, 'cuda')
 
     model_agent = get_model_agent(model, max_len=args.max_seq_len, T=0.6)
 
