@@ -1,15 +1,35 @@
 from typing import Optional
 import torch
+from torch import nn
 from torch.utils.data import DataLoader
+from torch.optim.optimizer import Optimizer
 from torch.optim.adamw import AdamW
 from tqdm import tqdm
 
 from data import ExampleDataset, get_collate_fn
 from model import ModelArgs, Transformer
 
+def save_checkpoint(model: nn.Module, 
+                    optimizer: Optimizer,
+                    out):
+    
+    obj = {
+        'model_dict': model.state_dict(),
+        'optimizer_state': optimizer.state_dict()
+    }
+    torch.save(obj, out)
+
+def load_checkpoint(src, 
+                    model: nn.Module, 
+                    optimizer: Optimizer):
+    obj = torch.load(src)
+
+    model.load_state_dict(obj['model_dict'])
+    optimizer.load_state_dict(obj['optimizer_state'])
+
 def train(
         model_args: ModelArgs, 
-        model_path: str, check_point: Optional[str] = None,
+        output_path: str, check_point: Optional[str] = None,
         device: str = 'cpu', 
         num_epochs: int = 10, 
         data_len: int = 100000, 
@@ -18,11 +38,12 @@ def train(
         max_height: int = 3,):
 
     model = Transformer(model_args, device)
-    if check_point:
-        model.load_state_dict(torch.load(check_point, map_location=device, weights_only=True))
-
     # Set up the optimizer
-    optimizer = AdamW(model.parameters(), lr=5e-5)
+    optimizer = AdamW(model.parameters(), lr=2e-4)
+
+    if check_point:
+        load_checkpoint(check_point, model, optimizer)
+
 
     # Custom Training Loop
     model.train()  # Set model to training mode
@@ -84,8 +105,7 @@ def train(
             print(f"Epoch {epoch + 1} completed. Average loss: {avg_loss:.4f}")
 
             # Step 11: Save the model and tokenizer
-            torch.save(model.state_dict(), model_path)
-            # tokenizer.save_pretrained("./custom_trained_model")
+            save_checkpoint(model, optimizer, output_path)
 
     except KeyboardInterrupt:
         print("Interrupted by user.")
@@ -94,7 +114,7 @@ def train(
         print(f"An error of type {type(e)} occurred: {e}")
 
     finally:
-        torch.save(model.state_dict(), model_path)
+        save_checkpoint(model, optimizer, output_path)
 
     print("Training completed and model saved.")
 
@@ -102,7 +122,7 @@ if __name__ == "__main__":
     from small_args import SmallArgs
     train(
         SmallArgs(),
-        model_path='small.pth',
+        output_path='small.pth',
         check_point=None,
         device='cuda'
     )

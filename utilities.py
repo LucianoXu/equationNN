@@ -11,5 +11,6 @@ def load_model(
     '''
 
     model = Transformer(model_args, device)
-    model.load_state_dict(torch.load(model_checkpint, weights_only=True, map_location=device))
+    obj = torch.load(model_checkpint)
+    model.load_state_dict(obj['model_dict'])
     return model

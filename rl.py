@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader
 from torch.optim.adamw import AdamW
 from tqdm import tqdm
 from typing import Optional
+from train import save_checkpoint, load_checkpoint
 
 from data import full_path_examples, ExampleDataset, get_collate_fn
 from model import ModelArgs, Transformer
@@ -11,8 +12,9 @@ from small_args import SmallArgs
 
 def rl_train(
         model_args: ModelArgs, 
-        model_path: str, check_point: Optional[str] = None,
+        output_path: str, check_point: Optional[str] = None,
         device: str = 'cpu', 
+        lr = 5e-5,
         num_steps: int = 200, 
         batch_size: int = 10, 
         batch_mutiplier: int = 10,
@@ -22,11 +24,16 @@ def rl_train(
         rl_temperature: float = 0.6,):
 
     model = Transformer(model_args, device)
-    if check_point:
-        model.load_state_dict(torch.load(check_point, map_location=device, weights_only=True))
-
     # Set up the optimizer
-    optimizer = AdamW(model.parameters(), lr=5e-5)
+    optimizer = AdamW(model.parameters())
+
+    if check_point:
+        load_checkpoint(check_point, model, optimizer)
+
+    # Adjust hyperparameters for each parameter group
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+        param_group['weight_decay'] = lr * 0.1
 
     # Custom Training Loop
     model.train()  # Set model to training mode
@@ -78,8 +85,8 @@ def rl_train(
 
             # Logging
             print(f"Average Total Reward: {total_reward / len(traces) / batch_mutiplier}")
-            torch.save(model.state_dict(), model_path)
-            print(f"Model saved to {model_path}.")
+            save_checkpoint(model, optimizer, output_path)
+            print(f"Model saved to {output_path}.")
 
 
     except KeyboardInterrupt:
@@ -89,18 +96,31 @@ def rl_train(
         print(f"An error of type {type(e)} occurred: {e}")
 
     finally:
-        torch.save(model.state_dict(), model_path)
+        save_checkpoint(model, optimizer, output_path)
 
     print("Training completed and model saved.")
 
 if __name__ == '__main__':
     model_args = SmallArgs()
-    for max_step in range(4, 10):
-        rl_train(model_args,
-            model_path = f'small_rl_{max_step}.pth',
-            check_point = f'small_rl_{max_step-1}.pth',
+    rl_train(model_args,
+            output_path = f'small_rl_6.pth',
+            check_point = f'small_rl_5.pth',
             device = 'cuda',
+            lr = 5e-6,
             num_steps = 200,
-            batch_size = 6,
-            batch_mutiplier = 20,
-            max_step=max_step)
+            batch_size = 10,
+            batch_mutiplier = 14,
+            rl_step_limit=24,
+            rl_temperature=0.6,
+            max_step=6)
+
+
+    # for max_step in range(4, 10):
+    #     rl_train(model_args,
+    #         output_path = f'small_rl_{max_step}.pth',
+    #         check_point = f'small_rl_{max_step-1}.pth',
+    #         device = 'cuda',
+    #         num_steps = 200,
+    #         batch_size = 20,
+    #         batch_mutiplier = 6,
+    #         max_step=max_step)

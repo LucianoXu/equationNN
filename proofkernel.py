@@ -127,6 +127,54 @@ def solve_kernel_group(model, examples: list[Term], step_limit: int = 50, T: flo
     return traces
 
 
+
+def beam_search(model, problem: Term, beam_number: int = 20, step_limit: int = 50, T: float = 1.0) -> Optional[list[str]]:
+    '''
+    Solve one problem by beam search.
+
+    Args:
+        problem (Term): a term of the problem to be solved
+        beam_number (int): the number of beams
+        step_limit (int): the maximum number of steps for searching
+
+    Returns:
+        A list of traces. Each trace is a list of tuples (action, log probability, reward).
+        Notice that an action is a complete response from the agent, not a single token.
+    '''
+    
+    kernels = [ProofKernel(problem) for _ in range(beam_number)]
+
+    # proceed the examples
+    traces: list[list[str]] = [[] for _ in range(len(kernels))]
+
+    remaining_number = len(kernels)
+    progress_bar = tqdm(total=step_limit)
+    for _ in range(step_limit):
+        # update the description of the progress bar
+        progress_bar.desc = f"Solving Kernels({remaining_number}/{remaining_number})"
+
+        # generate the batch
+        batch = [kernel.state for kernel in kernels]
+        actions, _ = batch_generation(model, batch, T)
+
+        remaining_number = 0
+        # proceed the kernels and record the action, probability and reward
+        for i, kernel in enumerate(kernels):
+            # if the kernel is already stopped, skip
+            if kernel.is_stopped:
+                return traces[i]
+
+            action = actions[i]
+            kernel.step(action)
+            traces[i].append(action)
+
+            remaining_number += 1
+
+        progress_bar.update(1)
+
+    return None
+
+
 if __name__ == '__main__':
     from scenario import parser
     from model import *
