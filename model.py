@@ -1,35 +1,35 @@
-
 import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+
 import torch
 import torch.nn.functional as F
 from torch import nn
-from tokenizer import TOKENS, tok_decode, tok_encode,  token2id
 
 
 @dataclass
 class ModelArgs:
     dim: int = 512
     n_layers: int = 32
-    n_heads: int = 8
-    n_kv_heads: Optional[int] = None
-    vocab_size: int = len(TOKENS)
+    n_heads: int = 16
+    n_kv_heads: int = 8
+    vocab_size: int = 0
     multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
-    ffn_dim_multiplier: Optional[float] = None
+    ffn_dim_multiplier: float = 1.5
     norm_eps: float = 1e-5
-    rope_theta: float = 500000
+    rope_theta: float = 5000.0
 
-    max_seq_len: int = 96
-
-
+    context_length: int = 160
 
 class RMSNorm(torch.nn.Module):
-    def __init__(self, dim: int, eps: float = 1e-6):
+    def __init__(self, dim: int, eps: float = 1e-6, device: str = 'cpu'):
         super().__init__()
         self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
+        self.weight = nn.Parameter(torch.ones(dim, device=device))
+
+    def reset_parameters(self):
+        nn.init.ones_(self.weight)
 
     def _norm(self, x):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
@@ -40,24 +40,21 @@ class RMSNorm(torch.nn.Module):
     
 
 
-def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
+def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, device = 'cpu'):
 
-    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2, device = device)[: (dim // 2)].float() / dim))
 
-    t = torch.arange(end, device=freqs.device, dtype=torch.float32)
-    freq_llama = torch.outer(t, freqs)
-    cos = torch.cos(freq_llama)
-    sin = torch.sin(freq_llama)
-    freq_llama_cis = torch.stack((cos, sin), dim=-1)
-    return freq_llama_cis
+    t = torch.arange(end, device=freqs.device)
+    freqs = torch.outer(t, freqs).float()
+    freq_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
+    return freq_cis
 
 
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
     ndim = x.ndim
-    assert 1 < ndim, "Input tensor must have at least 2 dimensions"
-    assert freqs_cis.shape == (x.shape[1], x.shape[-2], 2), "Invalid shape input shape: " + str(x.shape) + " cannot broadcast with freqs_cis shape: " + str(freqs_cis.shape)
-    shape = [d if i == 1 or i == ndim - 2 else 1 for i, d in enumerate(x.shape[:-1])]
-    shape += [2]
+    assert 0 <= 1 < ndim
+    assert freqs_cis.shape == (x.shape[1], x.shape[-1])
+    shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
     return freqs_cis.view(*shape)
 
 
@@ -66,16 +63,11 @@ def apply_rotary_emb(
     xk: torch.Tensor,
     freqs_cis: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    xq_ = xq.float().reshape(*xq.shape[:-1], -1, 2)
-    xk_ = xk.float().reshape(*xk.shape[:-1], -1, 2)
+    xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
+    xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
     freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
-    xq_real = xq_[..., 0] * freqs_cis[..., 0] - xq_[..., 1] * freqs_cis[..., 1]
-    xq_imag = xq_[..., 0] * freqs_cis[..., 1] + xq_[..., 1] * freqs_cis[..., 0]
-    xq_out = torch.cat((xq_real, xq_imag), dim=-1).flatten(3)
-
-    xk_real = xk_[..., 0] * freqs_cis[..., 0] - xk_[..., 1] * freqs_cis[..., 1]
-    xk_imag = xk_[..., 0] * freqs_cis[..., 1] + xk_[..., 1] * freqs_cis[..., 0]
-    xk_out = torch.cat((xk_real, xk_imag), dim=-1).flatten(3)
+    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
+    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq), xk_out.type_as(xk)
 
 
@@ -92,7 +84,7 @@ def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
 
 
 class Attention(nn.Module):
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: ModelArgs, device: str = 'cpu'):
         super().__init__()
         self.n_kv_heads = args.n_heads if args.n_kv_heads is None else args.n_kv_heads
         self.n_local_heads = args.n_heads
@@ -103,24 +95,34 @@ class Attention(nn.Module):
         self.wq = nn.Linear(
             args.dim,
             args.n_heads * self.head_dim,
-            bias=False
+            bias=False,
+            device=device
         )
         self.wk = nn.Linear(
             args.dim,
             self.n_kv_heads * self.head_dim,
-            bias=False
+            bias=False,
+            device=device
         )
         self.wv = nn.Linear(
             args.dim,
             self.n_kv_heads * self.head_dim,
-            bias=False
+            bias=False,
+            device=device
         )
         self.wo = nn.Linear(
             args.n_heads * self.head_dim,
             args.dim,
-            bias=False
+            bias=False,
+            device=device
         )
-        
+
+    def reset_parameters(self):
+        self.wq.reset_parameters()
+        self.wk.reset_parameters()
+        self.wv.reset_parameters()
+        self.wo.reset_parameters()
+
     def forward(
         self,
         x: torch.Tensor,
@@ -169,6 +171,7 @@ class FeedForward(nn.Module):
         hidden_dim: int,
         multiple_of: int,
         ffn_dim_multiplier: Optional[float],
+        device = 'cpu'
     ):
         super().__init__()
         hidden_dim = int(2 * hidden_dim / 3)
@@ -178,35 +181,47 @@ class FeedForward(nn.Module):
         hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
 
         self.w1 = nn.Linear(
-            dim, hidden_dim, bias=False
+            dim, hidden_dim, bias=False, device = device
         )
         self.w2 = nn.Linear(
-            hidden_dim, dim, bias=False
+            hidden_dim, dim, bias=False, device = device
         )
         self.w3 = nn.Linear(
-            dim, hidden_dim, bias=False
+            dim, hidden_dim, bias=False, device = device
         )
+    
+    def reset_parameters(self):
+        self.w1.reset_parameters()
+        self.w2.reset_parameters()
+        self.w3.reset_parameters()
 
     def forward(self, x):
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, layer_id: int, args: ModelArgs):
+    def __init__(self, layer_id: int, args: ModelArgs, device: str = 'cpu'):
         super().__init__()
         self.n_heads = args.n_heads
         self.dim = args.dim
         self.head_dim = args.dim // args.n_heads
-        self.attention = Attention(args)
+        self.layer_id = layer_id
+        self.attention = Attention(args, device)
         self.feed_forward = FeedForward(
             dim=args.dim,
             hidden_dim=4 * args.dim,
             multiple_of=args.multiple_of,
             ffn_dim_multiplier=args.ffn_dim_multiplier,
+            device = device
         )
-        self.layer_id = layer_id
-        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
-        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
+        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps, device = device)
+        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps, device = device)
+
+    def reset_parameters(self):
+        self.attention.reset_parameters()
+        self.feed_forward.reset_parameters()
+        self.attention_norm.reset_parameters()
+        self.ffn_norm.reset_parameters()
 
     def forward(
         self,
@@ -219,50 +234,97 @@ class TransformerBlock(nn.Module):
         return out
 
 
-class Transformer(nn.Module):
-    def __init__(self, params: ModelArgs, device: str):
+class Llama3(nn.Module):
+    def __init__(self, 
+                 vocab_size: int,
+                 context_length: int,
+                 dim: int,
+                 num_layers: int,
+                 num_heads: int,
+                 d_ff: int,
+                 device: str = 'cpu'):
+        
         super().__init__()
-        self.device = device
+
+        params = ModelArgs()
+        params.dim = dim
+        params.vocab_size = vocab_size
+        params.n_layers = num_layers
+        params.n_heads = num_heads
+        params.ffn_dim_multiplier = d_ff / dim
+        params.context_length = context_length
 
         self.params = params
         self.vocab_size = params.vocab_size
         self.n_layers = params.n_layers
 
         self.tok_embeddings = nn.Embedding(
-            params.vocab_size, params.dim
+            params.vocab_size, params.dim, device=device
         )
 
         self.layers = torch.nn.ModuleList()
-        for layer_id in range(params.n_layers):
-            self.layers.append(TransformerBlock(layer_id, params))
 
-        self.norm = RMSNorm(params.dim, eps=params.norm_eps)
+        for layer_id in range(params.n_layers):
+            self.layers.append(TransformerBlock(layer_id, params, device=device))
+
+        self.norm = RMSNorm(params.dim, eps=params.norm_eps, device=device)
         self.output = nn.Linear(
-            params.dim, params.vocab_size, bias=False
+            params.dim, params.vocab_size, bias=False, device=device
         )
 
         freqs_cis = precompute_freqs_cis(
             dim=params.dim // params.n_heads,
-            end=params.max_seq_len * 2,
+            end=params.context_length * 2,
             theta=params.rope_theta,
+            device=device
         )
 
         # register precomputed as buffer
-        self.register_buffer("freqs_cis", freqs_cis)
-        
-        self.to(device=device)
+        self.register_buffer("freqs_cis", freqs_cis, persistent=False)
 
-    def forward(self, tokens: torch.Tensor):
+    @property
+    def device(self):
+        return self.tok_embeddings.weight.device
+
+    @device.setter
+    def device(self, device):
+        self.tok_embeddings = self.tok_embeddings.to(device)
+        self.norm = self.norm.to(device)
+        self.output = self.output.to(device)
+        self.freqs_cis = self.freqs_cis.to(device)
+        for layer in self.layers:
+            layer = layer.to(device)
+
+    def reset_parameters(self):
+        self.tok_embeddings.reset_parameters()
+        for layer in self.layers:
+            layer.reset_parameters()
+        self.norm.reset_parameters()
+        self.output.reset_parameters()
+
+
+    def forward(self, tokens: torch.Tensor, attention_masks: Optional[torch.Tensor] = None):
         _bsz, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
         freqs_cis = self.freqs_cis[: seqlen]
 
-        
+
         mask = torch.full((seqlen, seqlen), float("-inf"), device=self.device)
-        mask = torch.triu(mask, diagonal=1)
-        if mask.device.type == torch.device('mps').type:
+        mask = torch.triu(mask, diagonal=1).type_as(h)
+
+        # get around the bug in MPS
+        if self.device.type == 'mps':
             mask = torch.nan_to_num(mask, nan=0.0)
-        
+
+        if attention_masks is not None:
+            attention_masks = attention_masks.to(self.device)
+            # Convert attention mask from (batch_size, seq_len) to (batch_size, 1, 1, seq_len)
+            attention_masks = attention_masks[:, None, None, :]
+            padding_mask = torch.where(attention_masks == 0, 
+                torch.tensor(-1e-9, device=self.device),
+                torch.tensor(0.0, device=self.device))
+            mask = mask[None, None, :, :]
+            mask = mask + padding_mask
 
         for layer in self.layers:
             h = layer(h, freqs_cis, mask)
@@ -270,11 +332,3 @@ class Transformer(nn.Module):
         h = self.norm(h)
         output = self.output(h).float()
         return output
-
-
-
-if __name__ == "__main__":
-    model = Transformer(ModelArgs(), "mps")
-    
-    # output the number of parameters
-    print(sum(p.numel() for p in model.parameters() if p.requires_grad))

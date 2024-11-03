@@ -4,12 +4,12 @@ from toplevel import *
 from utilities import *
 from small_args import SmallArgs
 
-model_checkpoint = 'small_rl_5.pth'
+model_checkpoint = 'small.pth'
 
 def forever_test(max_step = 4, max_height = 3, T = 0.4, beams = 20, step_limit = 50):
 
     args = SmallArgs()
-    model = load_model(model_checkpoint, args, 'cuda')
+    model = load_model(model_checkpoint, args, 'mps')
 
     model_agent = get_model_agent(model, max_len=args.max_seq_len, T=T)
 
@@ -52,7 +52,7 @@ def single_test(term: Term, beam_number = 20, step_limit = 50, T = 0.6):
 
 
 if __name__ == '__main__':
-    # forever_test(max_step = 6, beams = 20)
+    forever_test(max_step = 6, beams = 20)
 
     # SUCCEED 307 x * x = x * (x * x)
     # term = parser.parse_term('((x * x) = (x * (x * x)))')
@@ -69,5 +69,5 @@ if __name__ == '__main__':
     # term = parser.parse_term('((((u * z) * (((z * z) * (z * z)) * (u * u))) * (y * u)) = (((u * u) * y) * (u * z)))')
     # single_test(term)
 
-    term = parser.parse_term('((x * y) = (y * x))')
-    single_test(term)
+    # term = parser.parse_term('((x * y) = (y * x))')
+    # single_test(term)

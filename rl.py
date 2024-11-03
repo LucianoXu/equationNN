@@ -1,66 +1,103 @@
 import torch
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard.writer import SummaryWriter
 from torch.optim.adamw import AdamW
 from tqdm import tqdm
 from typing import Optional
-from train import save_checkpoint, load_checkpoint
+from elab import ELab, set_adamw_params, get_grad_norm
 
 from data import full_path_examples, ExampleDataset, get_collate_fn
-from model import ModelArgs, Transformer
+from model import ModelArgs, Llama3
+from tokenizer import token2id
 from proofkernel import solve_kernel_group
 from small_args import SmallArgs
 
 def rl_train(
-        model_args: ModelArgs, 
-        output_path: str, check_point: Optional[str] = None,
-        device: str = 'cpu', 
-        lr = 5e-5,
+        model: Llama3,
+
+        ckpt_folder: str,
+        input_version_name: str,
+        
+        
+        # optimizer
+        lr: float,
+        weight_decay: float, 
+        betas: tuple[float, float], 
+        eps = 1e-8,
+        grad_norm_clip: Optional[float] = None,
+
+        # training settings
         num_steps: int = 200, 
         batch_size: int = 10, 
-        batch_mutiplier: int = 10,
+        accumulaton_step: int = 10,
+        save_interval: int = 10,
+
+        # reinforcement learning settings
         max_step: int = 3, 
         max_height: int = 3,
         rl_step_limit: int = 20,
         rl_temperature: float = 0.6,):
 
-    model = Transformer(model_args, device)
+
+    # get device
+    device = next(model.parameters()).device
+
     # Set up the optimizer
-    optimizer = AdamW(model.parameters())
+    optimizer = AdamW(
+        model.parameters(),
+        lr = lr, betas = betas, weight_decay=weight_decay,
+        eps = eps
+    )
 
-    if check_point:
-        load_checkpoint(check_point, model, optimizer)
+    # create/load the checkpoint
+    # here t represents the next step number to be executed
+    lab = ELab(
+        ckpt_folder, 
+        version_name=input_version_name,
+        model = model,
+        optimizer = optimizer,
+        default_states={
+            't': 1,
+        }
+    )
 
-    # Adjust hyperparameters for each parameter group
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-        param_group['weight_decay'] = lr * 0.1
+    set_adamw_params(optimizer, lr=lr, betas=betas, weight_decay=weight_decay, eps=eps)
 
-    # Custom Training Loop
-    model.train()  # Set model to training mode
+    model.train()
+    optimizer.zero_grad()
+
+    t: int = lab.states['t']
+
+    # tensorboard logger
+    writer = SummaryWriter(lab.folder_path)
 
     try:
         for step in range(num_steps):
-            optimizer.zero_grad(set_to_none=True)  # Clear gradients
 
             print(f"Step {step + 1}/{num_steps}")
 
 
             # STEP 2: calculate the pseudo loss
             total_reward = 0.
+            total_pseudo_loss = 0.
+            total_grad_norm = 0.
 
-            for _ in range(batch_mutiplier):
+            for _ in range(accumulaton_step):
                 # STEP 1: sample the traces
                 # generate starting terms
                 examples = full_path_examples(batch_size, max_step, max_height)
+
                 # get the traces
                 traces = solve_kernel_group(model, list(examples), rl_step_limit, rl_temperature)
+                ###########################
 
-
+                # STEP 2: calculate the pseudo loss
                 # calculate baseline (average total reward)
+                batch_reward = 0.
                 for trace in traces:
                     for i in range(len(trace)):
-                        total_reward += trace[i][2]
-                avg_total_reward = total_reward / len(traces)
+                        batch_reward += trace[i][2]
+                avg_batch_reward = batch_reward / batch_size
 
                 J = torch.tensor(0.0, device=device)
 
@@ -73,20 +110,41 @@ def rl_train(
                             _, _, r = trace[j]
                             reward_to_go += r
 
-                        J += log_prob * (reward_to_go - avg_total_reward)
+                        J += log_prob * (reward_to_go - avg_batch_reward)
                 J = -J / len(traces)
+
+                total_pseudo_loss += J.item()
+                total_reward += batch_reward
 
 
                 # STEP 3: Backward pass and optimization
                 J.backward()        # Backward pass
 
+            raw_grad_norm = get_grad_norm(model)
+
+            if grad_norm_clip is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_norm_clip)
+
 
             optimizer.step()       # Update weights
+            optimizer.zero_grad()
 
             # Logging
-            print(f"Average Total Reward: {total_reward / len(traces) / batch_mutiplier}")
-            save_checkpoint(model, optimizer, output_path)
-            print(f"Model saved to {output_path}.")
+            avg_pseudo_loss = total_pseudo_loss / accumulaton_step
+            avg_reward = total_reward / accumulaton_step
+            
+            
+            # log the loss
+            print(f"{ckpt_folder}\tStep {t}\tPseudo Loss: {avg_pseudo_loss:.3f}\tAvg Reward: {avg_reward:.3f}\tRaw Grad Norm: {raw_grad_norm:.3f}")
+            writer.add_scalar("pseudo_loss", avg_pseudo_loss, t)
+            writer.add_scalar("avg reward", avg_reward, t)
+            writer.add_scalar("raw grad norm", raw_grad_norm, t)
+
+            t += 1
+
+            if t % save_interval == 0:
+                lab.states['t'] = t
+                lab.save(f"RL{t}")
 
 
     except KeyboardInterrupt:
@@ -96,31 +154,34 @@ def rl_train(
         print(f"An error of type {type(e)} occurred: {e}")
 
     finally:
-        save_checkpoint(model, optimizer, output_path)
+        lab.states['t'] = t
+        lab.save(f"RL{t}")
 
     print("Training completed and model saved.")
 
 if __name__ == '__main__':
-    model_args = SmallArgs()
-    rl_train(model_args,
-            output_path = f'small_rl_6.pth',
-            check_point = f'small_rl_5.pth',
-            device = 'cuda',
-            lr = 5e-6,
-            num_steps = 200,
-            batch_size = 10,
-            batch_mutiplier = 14,
-            rl_step_limit=24,
-            rl_temperature=0.6,
-            max_step=6)
+    rl_train(
+        Llama3(
+            vocab_size=len(token2id),
+            context_length = 160,
+            dim=512,
+            num_layers=32,
+            num_heads=16,
+            d_ff=2048,
+            device='mps'
+        ),
+        ckpt_folder = "./ckpt/VSuper",
+        input_version_name = 'latest',
 
+        lr = 5e-6,
+        weight_decay=0.01,
+        betas=(0.9, 0.99),
+        grad_norm_clip=1.0,
 
-    # for max_step in range(4, 10):
-    #     rl_train(model_args,
-    #         output_path = f'small_rl_{max_step}.pth',
-    #         check_point = f'small_rl_{max_step-1}.pth',
-    #         device = 'cuda',
-    #         num_steps = 200,
-    #         batch_size = 20,
-    #         batch_mutiplier = 6,
-    #         max_step=max_step)
+        num_steps = 200,
+        batch_size = 10,
+        accumulaton_step = 14,
+        rl_step_limit=24,
+        rl_temperature=0.6,
+        max_step=6
+    )

@@ -1,55 +1,74 @@
-from typing import Optional
+from typing import Literal, Optional
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard.writer import SummaryWriter
 from torch.optim.optimizer import Optimizer
-from torch.optim.adamw import AdamW
+from torch.optim import AdamW
 from tqdm import tqdm
 
+from tokenizer import token2id
+
 from data import ExampleDataset, get_collate_fn
-from model import ModelArgs, Transformer
+from model import ModelArgs, Llama3
 
-def save_checkpoint(model: nn.Module, 
-                    optimizer: Optimizer,
-                    out):
-    
-    obj = {
-        'model_dict': model.state_dict(),
-        'optimizer_state': optimizer.state_dict()
-    }
-    torch.save(obj, out)
-
-def load_checkpoint(src, 
-                    model: nn.Module, 
-                    optimizer: Optimizer):
-    obj = torch.load(src)
-
-    model.load_state_dict(obj['model_dict'])
-    optimizer.load_state_dict(obj['optimizer_state'])
+from elab import ELab, get_grad_norm
 
 def train(
-        model_args: ModelArgs, 
-        output_path: str, check_point: Optional[str] = None,
-        device: str = 'cpu', 
+        model: Llama3,
+        context_length: int,
+        ckpt_folder: str, 
+        load_version_name: str|Literal['latest', 'none'],
+
+        # optimizer
+        lr: float,
+        weight_decay: float, 
+        betas: tuple[float, float], 
+        eps = 1e-8,
+        grad_norm_clip: Optional[float] = None,
+
         num_epochs: int = 10, 
-        data_len: int = 100000, 
+        epoch_data_length: int = 100000, 
         batch_size: int = 32, 
         max_step: int = 6, 
-        max_height: int = 3,):
+        max_height: int = 3,
 
-    model = Transformer(model_args, device)
-    # Set up the optimizer
-    optimizer = AdamW(model.parameters(), lr=2e-4)
+        save_interval: int = 1000,
+        ):
+    
 
-    if check_point:
-        load_checkpoint(check_point, model, optimizer)
+    # get device
+    device = next(model.parameters()).device
 
+    # build optimizer
+    optimizer = AdamW(
+        model.parameters(),
+        lr = lr, betas = betas, weight_decay=weight_decay,
+        eps = eps
+    )
 
-    # Custom Training Loop
-    model.train()  # Set model to training mode
+    # create/load the checkpoint
+    # here t represents the next step number to be executed
+    lab = ELab(
+        ckpt_folder, 
+        version_name=load_version_name,
+        model = model,
+        optimizer = optimizer,
+        default_states={
+            't': 1,
+        }
+    )
+
+    model.train()
+    optimizer.zero_grad()
+
+    t: int = lab.states['t']
 
     # Define loss function
     loss_fn = torch.nn.CrossEntropyLoss(reduction='none')
+
+    # tensorboard logger
+    writer = SummaryWriter(lab.folder_path)
 
     try:
         for epoch in range(num_epochs):
@@ -57,55 +76,49 @@ def train(
             print(f"Epoch {epoch + 1}/{num_epochs}")
 
             # generate training data
-            dataset = ExampleDataset(data_len, max_step, max_height, model_args.max_seq_len)
-            train_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=get_collate_fn(device))
+            dataset = ExampleDataset(epoch_data_length, max_step, max_height, context_length)
+            train_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=get_collate_fn(str(device)))
 
             
             # Use tqdm for progress bar
             epoch_iterator = tqdm(train_dataloader, desc="Training", position=0, leave=True)
 
-            # Track loss for each epoch
-            total_loss = 0
 
             for i, batch in enumerate(epoch_iterator):
 
-                # Move batch data to the GPU (or CPU)
+                # Move batch data to the device
                 text, label, mask = batch
                 text = text.to(device)
                 label = label.to(device)
                 mask = mask.to(device)
                 
-                # Step 8: Forward pass
-                outputs = model(text)
-
-                # Shift the labels so that the model predicts the next token
-                outputs = outputs.contiguous()
-                label = label.contiguous()
+                # Forward pass
+                logits = model(text, mask)
 
                 # Flatten the logits and labels to compute loss
-                loss = loss_fn(outputs.view(-1, outputs.size(-1)), label.view(-1))
+                loss = loss_fn(logits.reshape(-1, logits.size(-1)), label.reshape(-1))
+                loss = loss.sum() / mask.sum().float() # Average loss over non-padding tokens
+                loss.backward()
 
-                # Apply the mask to the loss
-                loss = loss * mask.view(-1).float()  # Shape: (batch_size * seq_len)
+                raw_grad_norm = get_grad_norm(model)
 
-                # Normalize the loss by the number of valid (non-padding) tokens
-                loss = loss.sum() / mask.sum().float()  # Normalize by valid tokens
+                if grad_norm_clip is not None:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_norm_clip)
 
-                # Step 9: Backward pass and optimization
-                optimizer.zero_grad()  # Clear gradients
-                loss.backward()        # Backward pass
                 optimizer.step()       # Update weights
+                optimizer.zero_grad()  # Clear gradients
 
-                # Step 10: Logging
-                total_loss += loss.item()
-                epoch_iterator.set_postfix(loss=loss.item())
+                print(f"{ckpt_folder}\tStep {t}\tloss: {loss.item():.3f}")
 
-            # Print average loss for the epoch
-            avg_loss = total_loss / len(train_dataloader)
-            print(f"Epoch {epoch + 1} completed. Average loss: {avg_loss:.4f}")
+                # Log the data
+                writer.add_scalar("loss", loss.item(), t)
+                writer.add_scalar("raw grad norm", raw_grad_norm, t)
 
-            # Step 11: Save the model and tokenizer
-            save_checkpoint(model, optimizer, output_path)
+                t += 1
+
+                if t % save_interval == 0:
+                    lab.states['t'] = t
+                    lab.save(version_name=str(t))
 
     except KeyboardInterrupt:
         print("Interrupted by user.")
@@ -114,15 +127,38 @@ def train(
         print(f"An error of type {type(e)} occurred: {e}")
 
     finally:
-        save_checkpoint(model, optimizer, output_path)
+        lab.states['t'] = t
+        lab.save(version_name=str(t))
 
     print("Training completed and model saved.")
 
 if __name__ == "__main__":
-    from small_args import SmallArgs
     train(
-        SmallArgs(),
-        output_path='small.pth',
-        check_point=None,
-        device='cuda'
+        Llama3(
+            vocab_size=len(token2id),
+            context_length = 160,
+            dim=512,
+            num_layers=32,
+            num_heads=16,
+            d_ff=2048,
+            device='mps'
+        ),
+
+        context_length=160,
+        ckpt_folder='./ckpt/VSuper',
+        load_version_name='none',
+
+        lr = 2e-4,
+        weight_decay=0.01,
+        grad_norm_clip=1.0,
+        betas=(0.9, 0.99),
+
+
+        num_epochs = 10, 
+        epoch_data_length = 100000, 
+        batch_size = 32, 
+        max_step = 6, 
+        max_height = 3,
+
+        save_interval = 100000,
     )

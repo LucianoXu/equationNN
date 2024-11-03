@@ -176,24 +176,25 @@ def beam_search(model, problem: Term, beam_number: int = 20, step_limit: int = 5
 
 
 if __name__ == '__main__':
-    from scenario import parser
-    from model import *
-    term1 = parser.parse_term('((x * x) = (x * (x * x)))')
-    term2 = parser.parse_term('((x * x) = (x * (x * (x * x))))')
+    pass
+    # from scenario import parser
+    # from model import *
+    # term1 = parser.parse_term('((x * x) = (x * (x * x)))')
+    # term2 = parser.parse_term('((x * x) = (x * (x * (x * x))))')
 
-    model_checkpint = 'trained_parameters.pth'
+    # model_checkpint = 'trained_parameters.pth'
 
-    # load the model
-    device = 'mps'
-    SEQ_LEN = 96
+    # # load the model
+    # device = 'mps'
+    # SEQ_LEN = 96
 
-    model_args = ModelArgs()
-    model_args.max_seq_len = SEQ_LEN
-    model = Transformer(ModelArgs(), device)
-    model.load_state_dict(torch.load(model_checkpint, weights_only=True, map_location=device))
+    # model_args = ModelArgs()
+    # model_args.max_seq_len = SEQ_LEN
+    # model = Transformer(ModelArgs(), device)
+    # model.load_state_dict(torch.load(model_checkpint, weights_only=True, map_location=device))
 
-    traces = solve_kernel_group(model, [term1, term2, term1], 50, 0.3)
-    for trace in traces:
-        print(len(trace))
-        print(trace)
+    # traces = solve_kernel_group(model, [term1, term2, term1], 50, 0.3)
+    # for trace in traces:
+    #     print(len(trace))
+    #     print(trace)
 

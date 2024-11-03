@@ -1,3 +1,4 @@
+from tokenizer import *
 from model import *
 
 PADDING_ID = token2id['<PAD>']
@@ -109,24 +110,25 @@ def batch_generation(model, beams: list[str], T: float = 1.0) -> tuple[list[str]
 
 
 if __name__ == "__main__":
-    from scenario import parser
-    code1 = '((x * x) = (x * (x * x))) :'
-    code2 = '((x * (x * y)) = (x * (y * x))) :'
-    code3 = '((x * x) = (x * (x * (x * x)))) :'
+    pass
+    # from scenario import parser
+    # code1 = '((x * x) = (x * (x * x))) :'
+    # code2 = '((x * (x * y)) = (x * (y * x))) :'
+    # code3 = '((x * x) = (x * (x * (x * x)))) :'
 
-    model_checkpint = 'trained_parameters.pth'
+    # model_checkpint = 'trained_parameters.pth'
 
-    # load the model
-    device = 'mps'
-    SEQ_LEN = 96
+    # # load the model
+    # device = 'mps'
+    # SEQ_LEN = 96
 
-    model_args = ModelArgs()
-    model_args.max_seq_len = SEQ_LEN
-    model = Transformer(ModelArgs(), device)
-    model.load_state_dict(torch.load(model_checkpint, weights_only=True, map_location=device))
+    # model_args = ModelArgs()
+    # model_args.max_seq_len = SEQ_LEN
+    # model = Transformer(ModelArgs(), device)
+    # model.load_state_dict(torch.load(model_checkpint, weights_only=True, map_location=device))
 
 
-    print(batch_generation(model, [code1, code2, code3], 0.3))
+    # print(batch_generation(model, [code1, code2, code3], 0.3))
 
     
     
