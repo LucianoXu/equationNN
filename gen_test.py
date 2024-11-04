@@ -11,7 +11,7 @@ def forever_test(max_step = 4, max_height = 3, T = 0.4, beams = 20, step_limit =
     args = SmallArgs()
     model = load_model(model_checkpoint, args, 'mps')
 
-    model_agent = get_model_agent(model, max_len=args.max_seq_len, T=T)
+    model_agent = get_model_agent(model, max_len=args.context_length, T=T)
 
     # run the toplevel prover and have fun!
     while True:
@@ -24,7 +24,7 @@ def forever_test(max_step = 4, max_height = 3, T = 0.4, beams = 20, step_limit =
 
         print("Problem: ", term.sig_str(signature))
         print(f"Beam Search (beams ={beams}, step_limit = {step_limit})")
-        res = beam_search(model, term, beams, step_limit, T)
+        res = beam_search(model, term, beams, step_limit, args.context_length, T)
         print("Reseult: ", res)
         input()
 
@@ -40,7 +40,7 @@ def single_test(term: Term, beam_number = 20, step_limit = 50, T = 0.6):
     args = SmallArgs()
     model = load_model(model_checkpoint, args, 'cuda')
 
-    model_agent = get_model_agent(model, max_len=args.max_seq_len, T=T)
+    model_agent = get_model_agent(model, max_len=args.context_length, T=T)
 
     print("Problem: ", term.sig_str(signature))
     print(f"Beam Search (beams ={beam_number}, step_limit = {step_limit})")

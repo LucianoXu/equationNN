@@ -14,6 +14,7 @@ from small_args import SmallArgs
 
 def rl_train(
         model: Llama3,
+        context_length: int,
 
         ckpt_folder: str,
         input_version_name: str,
@@ -88,7 +89,7 @@ def rl_train(
                 examples = full_path_examples(batch_size, max_step, max_height)
 
                 # get the traces
-                traces = solve_kernel_group(model, list(examples), rl_step_limit, rl_temperature)
+                traces = solve_kernel_group(model, list(examples), rl_step_limit, context_length, rl_temperature)
                 ###########################
 
                 # STEP 2: calculate the pseudo loss
@@ -114,7 +115,7 @@ def rl_train(
                 J = -J / len(traces)
 
                 total_pseudo_loss += J.item()
-                total_reward += batch_reward
+                total_reward += avg_batch_reward
 
 
                 # STEP 3: Backward pass and optimization
@@ -167,18 +168,22 @@ if __name__ == '__main__':
             model_args = args,
             device='cuda'
         ),
+        context_length = args.context_length,
+
         ckpt_folder = "./ckpt/VSuper",
         input_version_name = 'latest',
 
-        lr = 2e-5,
+        lr = 2e-4,
         weight_decay=0.01,
         betas=(0.9, 0.99),
-        grad_norm_clip=1.0,
+        grad_norm_clip=10.0,
 
         num_steps = 200,
         batch_size = 10,
-        accumulaton_step = 14,
-        rl_step_limit=24,
-        rl_temperature=0.6,
-        max_step=4
+        accumulaton_step = 15,
+        rl_step_limit=20,
+        rl_temperature=1.0,
+        max_step=4,
+
+        save_interval=50
     )

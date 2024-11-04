@@ -43,9 +43,11 @@ def generate(model, code: str, max_len: int = 256, T: float = 1.0) -> str:
 
     return tok_decode(output)
 
-def batch_predict(model, beams: list[list[int]], T: float = 1.0) -> tuple[list[int], torch.Tensor]:
+def batch_predict(model, beams: list[list[int]], context_length: int = 256, T: float = 1.0) -> tuple[list[int], torch.Tensor]:
     '''
     Generate the next tokens for each beam using the model, with temperature scaling.
+
+    Will use the last context_length tokens in each beam to predict the next
 
     Return the next tokens and the probabilities of the next tokens.
     '''
@@ -60,7 +62,7 @@ def batch_predict(model, beams: list[list[int]], T: float = 1.0) -> tuple[list[i
     encoding = torch.tensor(padding_beams, device=device)
 
     # autoregressive generation
-    logits = model(encoding)
+    logits = model(encoding[:, -context_length:])
     logits = logits[range(batch_size), idx_beams_predict, :] / T
 
     probabilities = F.softmax(logits, dim=-1)
@@ -72,7 +74,7 @@ def batch_predict(model, beams: list[list[int]], T: float = 1.0) -> tuple[list[i
     return next_tokens, predict_probabilities
 
 
-def batch_generation(model, beams: list[str], T: float = 1.0) -> tuple[list[str], torch.Tensor]:
+def batch_generation(model, beams: list[str], context_length: int = 256, T: float = 1.0) -> tuple[list[str], torch.Tensor]:
     '''
     Generate the output for each beam using the model, with temperature scaling.
 
@@ -88,7 +90,7 @@ def batch_generation(model, beams: list[str], T: float = 1.0) -> tuple[list[str]
     # while there are still beams to predict
     while len(input_ids) > 0:
         indices = list(input_ids.keys())
-        next_tokens, predict_probabilities = batch_predict(model, [input_ids[i] for i in input_ids], T)
+        next_tokens, predict_probabilities = batch_predict(model, [input_ids[i] for i in input_ids], context_length, T)
         predict_probabilities = torch.log(predict_probabilities)
 
         # iterate through the current beams
