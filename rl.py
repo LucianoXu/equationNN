@@ -31,7 +31,7 @@ def rl_train(
         num_steps: int = 200, 
         batch_size: int = 10, 
         accumulaton_step: int = 10,
-        save_interval: int = 10,
+        save_interval: Optional[int] = 10,
 
         # reinforcement learning settings
         max_step: int = 3, 
@@ -78,10 +78,10 @@ def rl_train(
             print(f"Step {step + 1}/{num_steps}")
 
 
-            # STEP 2: calculate the pseudo loss
-            total_reward = 0.
+            # note that reward is calculated for each trace
+            avg_reward = 0.
             total_pseudo_loss = 0.
-            total_grad_norm = 0.
+            total_SA_pair_count = 0
 
             for _ in range(accumulaton_step):
                 # STEP 1: sample the traces
@@ -95,10 +95,16 @@ def rl_train(
                 # STEP 2: calculate the pseudo loss
                 # calculate baseline (average total reward)
                 batch_reward = 0.
+                batch_SA_pair_count = 0
                 for trace in traces:
                     for i in range(len(trace)):
                         batch_reward += trace[i][2]
-                avg_batch_reward = batch_reward / batch_size
+                    batch_SA_pair_count += len(trace)
+                avg_trace_reward = batch_reward / batch_size
+
+                # add to total
+                avg_reward += avg_trace_reward / accumulaton_step
+                total_SA_pair_count += batch_SA_pair_count
 
                 J = torch.tensor(0.0, device=device)
 
@@ -111,15 +117,20 @@ def rl_train(
                             _, _, r = trace[j]
                             reward_to_go += r
 
-                        J += log_prob * (reward_to_go - avg_batch_reward)
-                J = -J / len(traces)
+                        J -= log_prob * (reward_to_go - avg_trace_reward)
 
                 total_pseudo_loss += J.item()
-                total_reward += avg_batch_reward
-
 
                 # STEP 3: Backward pass and optimization
                 J.backward()        # Backward pass
+
+            # for normalization reasons, the pseudo loss is calculated for each state-action pair
+            avg_pseudo_loss = total_pseudo_loss / total_SA_pair_count
+
+            # adjust the gradient by total SA pair count
+            for param in model.parameters():
+                if param.grad is not None:
+                    param.grad /= total_SA_pair_count
 
             raw_grad_norm = get_grad_norm(model)
 
@@ -131,11 +142,6 @@ def rl_train(
             optimizer.zero_grad()
 
             # Logging
-            avg_pseudo_loss = total_pseudo_loss / accumulaton_step
-            avg_reward = total_reward / accumulaton_step
-            
-            
-            # log the loss
             print(f"{ckpt_folder}\tStep {t}\tPseudo Loss: {avg_pseudo_loss:.3f}\tAvg Reward: {avg_reward:.3f}\tRaw Grad Norm: {raw_grad_norm:.3f}")
             writer.add_scalar("pseudo_loss", avg_pseudo_loss, t)
             writer.add_scalar("avg reward", avg_reward, t)
@@ -143,7 +149,7 @@ def rl_train(
 
             t += 1
 
-            if t % save_interval == 0:
+            if save_interval is not None and t % save_interval == 0:
                 lab.states['t'] = t
                 lab.save(f"RL-{max_step}-{t}")
 
@@ -155,14 +161,16 @@ def rl_train(
         print(f"An error of type {type(e)} occurred: {e}")
 
     finally:
-        lab.states['t'] = t
-        lab.save(f"RL-{max_step}-{t}")
+        if save_interval is not None:
+            lab.states['t'] = t
+            lab.save(f"RL-{max_step}-{t}")
 
     print("Training completed and model saved.")
 
 if __name__ == '__main__':
     from small_args import SmallArgs
     args = SmallArgs()
+    args.context_length = 96
     rl_train(
         Llama3(
             model_args = args,
@@ -173,16 +181,16 @@ if __name__ == '__main__':
         ckpt_folder = "./ckpt/VSuper",
         input_version_name = 'latest',
 
-        lr = 2e-4,
+        lr = 2e-5,
         weight_decay=0.01,
         betas=(0.9, 0.99),
-        grad_norm_clip=10.0,
+        grad_norm_clip=1.0,
 
         num_steps = 200,
-        batch_size = 10,
-        accumulaton_step = 15,
+        batch_size = 5,
+        accumulaton_step = 14,
         rl_step_limit=20,
-        rl_temperature=1.0,
+        rl_temperature=0.6,
         max_step=4,
 
         save_interval=50
