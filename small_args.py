@@ -2,16 +2,17 @@ from model import ModelArgs
 from dataclasses import dataclass
 from typing import Optional
 
+from tokenizer import token2id
+
 @dataclass
 class SmallArgs(ModelArgs):
     dim: int = 256
     n_layers: int = 10
     n_heads: int = 16
-    n_kv_heads: Optional[int] = None
-    vocab_size: int = 18
-    multiple_of: int = 256
-    ffn_dim_multiplier: Optional[float] = None
-    norm_eps: float = 1e-8
-    rope_theta: float = 10000
+    n_kv_heads: int = 8
+    vocab_size: int = len(token2id)
+    d_ff: int = 1024
+    norm_eps: float = 1e-5
+    rope_theta: float = 5000.0
 
-    max_seq_len: int = 96
+    context_length: int = 160

@@ -144,7 +144,7 @@ def rl_train(
 
             if t % save_interval == 0:
                 lab.states['t'] = t
-                lab.save(f"RL{t}")
+                lab.save(f"RL-{max_step}-{t}")
 
 
     except KeyboardInterrupt:
@@ -155,25 +155,22 @@ def rl_train(
 
     finally:
         lab.states['t'] = t
-        lab.save(f"RL{t}")
+        lab.save(f"RL-{max_step}-{t}")
 
     print("Training completed and model saved.")
 
 if __name__ == '__main__':
+    from small_args import SmallArgs
+    args = SmallArgs()
     rl_train(
         Llama3(
-            vocab_size=len(token2id),
-            context_length = 160,
-            dim=512,
-            num_layers=32,
-            num_heads=16,
-            d_ff=2048,
-            device='mps'
+            model_args = args,
+            device='cuda'
         ),
         ckpt_folder = "./ckpt/VSuper",
         input_version_name = 'latest',
 
-        lr = 5e-6,
+        lr = 2e-5,
         weight_decay=0.01,
         betas=(0.9, 0.99),
         grad_norm_clip=1.0,
@@ -183,5 +180,5 @@ if __name__ == '__main__':
         accumulaton_step = 14,
         rl_step_limit=24,
         rl_temperature=0.6,
-        max_step=6
+        max_step=4
     )
