@@ -6,13 +6,13 @@ from elab import ELab
 from ext_solver import vampire_solve
 import json
 
-Axiom = parser.parse_term('((X * Y) = ((Y * Y) * X))')
+Axiom = parser.parse_term('(X = (Y * (Y * (X * Y))))')
 
 conf = json.load(open('config.json'))
 vampire = conf['vampire']
 
 
-def test_example(
+def example_test(
     term: Term, # the problem term
 
     model: nn.Module,
@@ -22,8 +22,6 @@ def test_example(
 
     beams: int, step_limit: int,
 ):
-
-    model_agent = get_model_agent(model, max_len=context_length, T=T)
 
     # state the problem
     print("Problem: ", term.sig_str(signature))
@@ -54,8 +52,6 @@ def forever_test(
     max_step = 4, max_height = 3, T = 0.4, beams = 20, step_limit = 50):
 
 
-    model_agent = get_model_agent(model, max_len=context_length, T=T)
-
     # run the toplevel prover and have fun!
     while True:
         path = gen_example(max_step=max_step, max_height=max_height)
@@ -64,17 +60,17 @@ def forever_test(
         if term.args[0] == term.args[1]:
             continue
 
-        test_example(term, model, context_length, T, beams, step_limit)
+        example_test(term, model, context_length, T, beams, step_limit)
 
 
 if __name__ == '__main__':
     args = SmallArgs()
     model = Llama3(args, device='cuda')
-    ELab('ckpt/VSuper', version_name='latest', model=model)
+    ELab('ckpt/Eq73', version_name='latest', model=model)
 
-    # forever_test(
-    #     model,
-    #     context_length=args.context_length, max_step = 8, beams = 50)
+    forever_test(
+        model,
+        context_length=args.context_length, max_step = 3, beams = 1)
 
     # SUCCEED 307 x * x = x * (x * x)
     # term = parser.parse_term('((x * x) = (x * (x * x)))')
@@ -90,7 +86,6 @@ if __name__ == '__main__':
     # term = parser.parse_term('((((u * z) * (((z * z) * (z * z)) * (u * u))) * (y * u)) = (((u * u) * y) * (u * z)))')
     # single_test(term)
 
-    term = parser.parse_term('((x * y) = (y * x))')
+    # term = parser.parse_term('((x * y) = (y * x))')
 
-    # test the example
-    test_example(term, model, args.context_length, 0.6, 50, 50)
+    example_test(term, model, args.context_length, 0.6, 50, 50)

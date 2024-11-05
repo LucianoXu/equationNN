@@ -78,7 +78,7 @@ class ExampleDataset(Dataset):
                 prompt = term.sig_str(self.sig) + " : " + RULE_NAMES[opt]+ " " + " ".join(str(p) for p in pos) + " " + given_subst.sig_str(self.sig)
                 encoded_ids = tuple(tok_encode(prompt))
 
-                print(prompt)
+                # print(prompt)
                 
                 input = (SOS_ID, ) + encoded_ids
                 label = encoded_ids + (EOS_ID, )

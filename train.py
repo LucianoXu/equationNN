@@ -138,14 +138,14 @@ if __name__ == "__main__":
     train(
         Llama3(
             model_args = args,
-            device='mps'
+            device='cuda'
         ),
 
         context_length = args.context_length,
         ckpt_folder='./ckpt/Eq73',
-        load_version_name='none',
+        load_version_name='latest',
 
-        lr = 2e-4,
+        lr = 2e-5,
         weight_decay=0.01,
         grad_norm_clip=1.0,
         betas=(0.9, 0.99),
@@ -153,7 +153,7 @@ if __name__ == "__main__":
 
         num_epochs = 10, 
         epoch_data_length = 100000, 
-        batch_size = 32, 
+        batch_size = 256, 
         max_step = 6, 
         max_height = 3,
 

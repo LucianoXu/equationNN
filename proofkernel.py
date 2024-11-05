@@ -1,5 +1,5 @@
 # define the proof kernel. It is also the environment simulator for reinforcement learning.
-
+from pyualg import parser
 from scenario import *
 from tokenizer import *
 from generate import batch_generation
@@ -48,10 +48,16 @@ class ProofKernel:
                 rule = r_R2L
             else:
                 return -10.
-            
-            pos = tuple(int(id2token[id]) for id in encoding[1:])
 
-            res = self.equation.apply_at(rule, self.sig, pos)
+            # find the first token2id['{'] element in encoding
+            subst_start_id = encoding.index(token2id['{'])
+
+            
+            pos = tuple(int(id2token[id]) for id in encoding[1:subst_start_id])
+
+            subst = parser.parse_subst(tok_decode(encoding[subst_start_id:]))
+
+            res = self.equation.apply_at(rule, self.sig, pos, subst, forbidden_heads)
         except:
             return -10.
 
@@ -60,7 +66,7 @@ class ProofKernel:
             return -10.
         
         # if the command is applicable, conduct the command
-        self.equation = res
+        self.equation = res[0]
         
         # check whether the equation is proved, return the corresponding reward
         if self.equation.args[0] == self.equation.args[1]:

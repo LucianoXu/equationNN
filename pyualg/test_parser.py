@@ -65,7 +65,8 @@ def test_rewrite_rule():
     term = parser.parse_term('((f (g x) y) + y)')
     rule = parser.parse_rewriterule('((f x m) + m) -> ((f m x) + x)')
     result = rule(sig, term)
-    assert result == parser.parse_term('((f y (g x)) + (g x))')
+    assert result is not None
+    assert result[0] == parser.parse_term('((f y (g x)) + (g x))')
 
 def test_trs():
     sig = Signature(
