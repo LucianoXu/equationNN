@@ -93,10 +93,12 @@ def train(
                 mask = mask.to(device)
                 
                 # Forward pass
-                logits = model(text, mask)
+                logits = model(text)
 
                 # Flatten the logits and labels to compute loss
                 loss = loss_fn(logits.reshape(-1, logits.size(-1)), label.reshape(-1))
+                # Apply mask to the loss
+                loss = loss * mask.view(-1).float()
                 loss = loss.sum() / mask.sum().float() # Average loss over non-padding tokens
                 loss.backward()
 
