@@ -75,7 +75,7 @@ class ProofKernel:
 
 
 
-def solve_kernel_group(model, examples: list[Term], step_limit: int = 50, T: float = 1.0) -> list[list[tuple[str, torch.Tensor, float]]]:
+def solve_kernel_group(model, examples: list[Term], step_limit: int = 50, context_length: int = 256, T: float = 1.0) -> list[list[tuple[str, torch.Tensor, float]]]:
     '''
     Solve a group of proof kernels for parallel training and evaluation.
 
@@ -101,7 +101,7 @@ def solve_kernel_group(model, examples: list[Term], step_limit: int = 50, T: flo
 
         # generate the batch
         batch = [kernel.state for kernel in kernels]
-        actions, log_probs = batch_generation(model, batch, T)
+        actions, log_probs = batch_generation(model, batch, context_length, T)
 
         remaining_number = 0
         # proceed the kernels and record the action, probability and reward
@@ -128,7 +128,7 @@ def solve_kernel_group(model, examples: list[Term], step_limit: int = 50, T: flo
 
 
 
-def beam_search(model, problem: Term, beam_number: int = 20, step_limit: int = 50, T: float = 1.0) -> Optional[list[str]]:
+def beam_search(model, problem: Term, beam_number: int = 20, step_limit: int = 50, context_length: int = 256, T: float = 1.0) -> Optional[list[str]]:
     '''
     Solve one problem by beam search.
 
@@ -155,7 +155,7 @@ def beam_search(model, problem: Term, beam_number: int = 20, step_limit: int = 5
 
         # generate the batch
         batch = [kernel.state for kernel in kernels]
-        actions, _ = batch_generation(model, batch, T)
+        actions, _ = batch_generation(model, batch, context_length, T)
 
         remaining_number = 0
         # proceed the kernels and record the action, probability and reward

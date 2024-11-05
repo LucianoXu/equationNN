@@ -14,6 +14,7 @@ from small_args import SmallArgs
 
 def rl_train(
         model: Llama3,
+        context_length: int,
 
         ckpt_folder: str,
         input_version_name: str,
@@ -30,7 +31,7 @@ def rl_train(
         num_steps: int = 200, 
         batch_size: int = 10, 
         accumulaton_step: int = 10,
-        save_interval: int = 10,
+        save_interval: Optional[int] = 10,
 
         # reinforcement learning settings
         max_step: int = 3, 
@@ -77,74 +78,87 @@ def rl_train(
             print(f"Step {step + 1}/{num_steps}")
 
 
-            # STEP 2: calculate the pseudo loss
-            total_reward = 0.
+            # note that reward is calculated for each trace
+            avg_reward = 0.
             total_pseudo_loss = 0.
-            total_grad_norm = 0.
+            total_SA_pair_count = 0
+            torch.cuda.empty_cache()
 
-            for _ in range(accumulaton_step):
-                # STEP 1: sample the traces
-                # generate starting terms
-                examples = full_path_examples(batch_size, max_step, max_height)
+            try:
+                for _ in range(accumulaton_step):
+                    # STEP 1: sample the traces
+                    # generate starting terms
+                    examples = full_path_examples(batch_size, max_step, max_height)
 
-                # get the traces
-                traces = solve_kernel_group(model, list(examples), rl_step_limit, rl_temperature)
-                ###########################
+                    # get the traces
+                    traces = solve_kernel_group(model, list(examples), rl_step_limit, context_length, rl_temperature)
+                    ###########################
 
-                # STEP 2: calculate the pseudo loss
-                # calculate baseline (average total reward)
-                batch_reward = 0.
-                for trace in traces:
-                    for i in range(len(trace)):
-                        batch_reward += trace[i][2]
-                avg_batch_reward = batch_reward / batch_size
+                    # STEP 2: calculate the pseudo loss
+                    # calculate baseline (average total reward)
+                    batch_reward = 0.
+                    batch_SA_pair_count = 0
+                    for trace in traces:
+                        for i in range(len(trace)):
+                            batch_reward += trace[i][2]
+                        batch_SA_pair_count += len(trace)
+                    avg_trace_reward = batch_reward / batch_size
 
-                J = torch.tensor(0.0, device=device)
+                    # add to total
+                    avg_reward += avg_trace_reward / accumulaton_step
+                    total_SA_pair_count += batch_SA_pair_count
 
-                for trace in traces:
-                    for i in range(len(trace)):
-                        _, log_prob, reward_to_go = trace[i]
+                    J = torch.tensor(0.0, device=device)
 
-                        # calculate the reward to go
-                        for j in range(i+1, len(trace)):
-                            _, _, r = trace[j]
-                            reward_to_go += r
+                    for trace in traces:
+                        for i in range(len(trace)):
+                            _, log_prob, reward_to_go = trace[i]
 
-                        J += log_prob * (reward_to_go - avg_batch_reward)
-                J = -J / len(traces)
+                            # calculate the reward to go
+                            for j in range(i+1, len(trace)):
+                                _, _, r = trace[j]
+                                reward_to_go += r
 
-                total_pseudo_loss += J.item()
-                total_reward += batch_reward
+                            J -= log_prob * (reward_to_go - avg_trace_reward)
+
+                    total_pseudo_loss += J.item()
+
+                    # STEP 3: Backward pass and optimization
+                    J.backward()        # Backward pass
+
+                # for normalization reasons, the pseudo loss is calculated for each state-action pair
+                avg_pseudo_loss = total_pseudo_loss / total_SA_pair_count
+
+                # adjust the gradient by total SA pair count
+                for param in model.parameters():
+                    if param.grad is not None:
+                        param.grad /= total_SA_pair_count
+
+                raw_grad_norm = get_grad_norm(model)
+
+                if grad_norm_clip is not None:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_norm_clip)
 
 
-                # STEP 3: Backward pass and optimization
-                J.backward()        # Backward pass
+                optimizer.step()       # Update weights
+                optimizer.zero_grad()
 
-            raw_grad_norm = get_grad_norm(model)
+                # Logging
+                print(f"{ckpt_folder}\tStep {t}\tPseudo Loss: {avg_pseudo_loss:.3f}\tAvg Reward: {avg_reward:.3f}\tRaw Grad Norm: {raw_grad_norm:.3f}")
+                writer.add_scalar("pseudo_loss", avg_pseudo_loss, t)
+                writer.add_scalar("avg reward", avg_reward, t)
+                writer.add_scalar("raw grad norm", raw_grad_norm, t)
 
-            if grad_norm_clip is not None:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_norm_clip)
+                t += 1
 
-
-            optimizer.step()       # Update weights
-            optimizer.zero_grad()
-
-            # Logging
-            avg_pseudo_loss = total_pseudo_loss / accumulaton_step
-            avg_reward = total_reward / accumulaton_step
+                if save_interval is not None and t % save_interval == 0:
+                    lab.states['t'] = t
+                    lab.save(f"RL-{max_step}-{t}")
             
-            
-            # log the loss
-            print(f"{ckpt_folder}\tStep {t}\tPseudo Loss: {avg_pseudo_loss:.3f}\tAvg Reward: {avg_reward:.3f}\tRaw Grad Norm: {raw_grad_norm:.3f}")
-            writer.add_scalar("pseudo_loss", avg_pseudo_loss, t)
-            writer.add_scalar("avg reward", avg_reward, t)
-            writer.add_scalar("raw grad norm", raw_grad_norm, t)
-
-            t += 1
-
-            if t % save_interval == 0:
-                lab.states['t'] = t
-                lab.save(f"RL{t}")
+            except torch.OutOfMemoryError:
+                print("!!! Out of memory error. Skipping this batch !!! ")
+                optimizer.zero_grad()
+                step -= 1
 
 
     except KeyboardInterrupt:
@@ -154,26 +168,27 @@ def rl_train(
         print(f"An error of type {type(e)} occurred: {e}")
 
     finally:
-        lab.states['t'] = t
-        lab.save(f"RL{t}")
+        if save_interval is not None:
+            lab.states['t'] = t
+            lab.save(f"RL-{max_step}-{t}")
 
     print("Training completed and model saved.")
 
 if __name__ == '__main__':
+    from small_args import SmallArgs
+    args = SmallArgs()
+    args.context_length = 96
     rl_train(
         Llama3(
-            vocab_size=len(token2id),
-            context_length = 160,
-            dim=512,
-            num_layers=32,
-            num_heads=16,
-            d_ff=2048,
-            device='mps'
+            model_args = args,
+            device='cuda'
         ),
-        ckpt_folder = "./ckpt/VSuper",
-        input_version_name = 'latest',
+        context_length = args.context_length,
 
-        lr = 5e-6,
+        ckpt_folder = "./ckpt/VSuper",
+        input_version_name = '4854',
+
+        lr = 2e-5,
         weight_decay=0.01,
         betas=(0.9, 0.99),
         grad_norm_clip=1.0,
@@ -181,7 +196,9 @@ if __name__ == '__main__':
         num_steps = 200,
         batch_size = 10,
         accumulaton_step = 14,
-        rl_step_limit=24,
+        rl_step_limit=20,
         rl_temperature=0.6,
-        max_step=6
+        max_step=4,
+
+        save_interval=50
     )

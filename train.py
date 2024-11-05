@@ -4,7 +4,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard.writer import SummaryWriter
 from torch.optim.optimizer import Optimizer
-from torch.optim import AdamW
+from torch.optim.adamw import AdamW
 from tqdm import tqdm
 
 from tokenizer import token2id
@@ -133,18 +133,15 @@ def train(
     print("Training completed and model saved.")
 
 if __name__ == "__main__":
+    from small_args import SmallArgs
+    args = SmallArgs()
     train(
         Llama3(
-            vocab_size=len(token2id),
-            context_length = 160,
-            dim=512,
-            num_layers=32,
-            num_heads=16,
-            d_ff=2048,
-            device='mps'
+            model_args = args,
+            device='cuda'
         ),
 
-        context_length=160,
+        context_length = args.context_length,
         ckpt_folder='./ckpt/VSuper',
         load_version_name='none',
 
