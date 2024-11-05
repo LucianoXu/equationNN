@@ -177,7 +177,6 @@ def rl_train(
 if __name__ == '__main__':
     from small_args import SmallArgs
     args = SmallArgs()
-    args.context_length = 96
     rl_train(
         Llama3(
             model_args = args,
@@ -186,7 +185,7 @@ if __name__ == '__main__':
         context_length = args.context_length,
 
         ckpt_folder = "./ckpt/VSuper",
-        input_version_name = '4854',
+        input_version_name = 'latest',
 
         lr = 2e-5,
         weight_decay=0.01,
@@ -194,11 +193,11 @@ if __name__ == '__main__':
         grad_norm_clip=1.0,
 
         num_steps = 200,
-        batch_size = 10,
-        accumulaton_step = 14,
-        rl_step_limit=20,
+        batch_size = 6,
+        accumulaton_step = 20,
+        rl_step_limit=22,
         rl_temperature=0.6,
-        max_step=4,
+        max_step=5,
 
-        save_interval=50
+        save_interval=10000
     )
