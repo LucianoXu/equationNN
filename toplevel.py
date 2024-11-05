@@ -6,6 +6,15 @@ from tokenizer import *
 from generate import generate
 from scenario import signature
 
+def list_agent(act_ls: list[str]) -> Callable[[ProofKernel], str]:
+    '''
+    create a list agent that will return the actions in the list
+    '''
+    def list_agent(kernel: ProofKernel) -> str:
+        return act_ls[kernel.step_count]
+
+    return list_agent
+
 def human_agent(kernel: ProofKernel) -> str:
     '''
     a human agent that interacts with the proof kernel

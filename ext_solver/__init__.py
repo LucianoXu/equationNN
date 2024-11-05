@@ -1,1 +1,1 @@
-from vampire_solver import vampire_solve
+from .vampire_solver import vampire_solve
