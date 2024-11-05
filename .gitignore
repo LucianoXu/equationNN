@@ -6,6 +6,8 @@ parsetab.py
 
 events.out.*
 
+config.json
+
 *.pth
 
 *.egg-info

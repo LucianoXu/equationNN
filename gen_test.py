@@ -1,7 +1,6 @@
 
 from model import *
 from toplevel import *
-from utilities import *
 from small_args import SmallArgs
 
 model_checkpoint = 'small.pth'

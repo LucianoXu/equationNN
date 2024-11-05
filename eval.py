@@ -4,8 +4,6 @@ from pyualg import Term
 from proofkernel import solve_kernel_group
 from tqdm import tqdm
 
-from utilities import *
-
 def eval(model, examples: list[Term], step_limit: int = 50, T: float = 1.0, batch_size: int = 48) -> float:
     '''
     Evaluate the model on a list of examples. The evaluation metric is the average length of the traces.
