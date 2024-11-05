@@ -7,6 +7,7 @@ TOKENS = [
 
     # tokens to specify the rewriting
     'L2R', 'R2L', '0', '1',
+    '{', '}', ',', 'X', 'Y',
     
     # token to separate the term and the rewriting
     ':', 

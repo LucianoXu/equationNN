@@ -1,12 +1,9 @@
 from typing import Optional
-from pyualg import Signature, Term, RewriteRule, TermOpt, Parser
+from pyualg import Signature, Term, RewriteRule, TermOpt, Subst, Parser
 from rewritepath import RewritePath
 import random
 
-# a Magma with only one equational theory:
-# Equation387[x ◇ y = (y ◇ y) ◇ x]
-# See (https://teorth.github.io/equational_theories/implications/?387)
-
+# the problem signature
 signature = Signature(
     {
         '*' : (2, {'Infix'}),
@@ -15,8 +12,24 @@ signature = Signature(
 )
 parser = Parser(signature)
 
-r_L2R = parser.parse_rewriterule('(X * Y) -> ((Y * Y) * X)')
-r_R2L = parser.parse_rewriterule('((Y * Y) * X) -> (X * Y)')
+
+# # a Magma with only one equational theory:
+# # Equation387 [x ◇ y = (y ◇ y) ◇ x]
+# # See (https://teorth.github.io/equational_theories/implications/?387)
+
+# r_L2R = parser.parse_rewriterule('(X * Y) -> ((Y * Y) * X)')
+# r_R2L = parser.parse_rewriterule('((Y * Y) * X) -> (X * Y)')
+
+
+# Equation73 [x = y ◇ (y ◇ (x ◇ y))]
+# See (https://teorth.github.io/equational_theories/implications/?73)
+r_L2R = parser.parse_rewriterule('X -> (Y * (Y * (X * Y)))')
+r_R2L = parser.parse_rewriterule('(Y * (Y * (X * Y))) -> X')
+
+# calculate the required variables for instantiation of the rewriterules
+INST_VARS = {rule: rule.inst_vars(signature) for rule in [r_L2R, r_R2L]}
+
+forbidden_heads = {'X', 'Y', '='}
 
 INV_GEN_RULES = {
     r_L2R: r_R2L,
@@ -59,7 +72,6 @@ def gen_example(max_step: int = 10, max_height: int = 3) -> RewritePath:
         all_nodes = list(path.current.all_nodes())
         # get the outer product of all_nodes and [r_L2R, r_R2L]
         choices = [(rule, pos) for pos, _ in all_nodes for rule in [r_L2R, r_R2L]]
-
         while True:
 
             # if no choices, return the path directly without further trying
@@ -70,10 +82,19 @@ def gen_example(max_step: int = 10, max_height: int = 3) -> RewritePath:
             choice = random.choice(choices)
             choices.remove(choice)
 
-            # randomly select one node
+            # randomly select one rule and position
             gen_rule, pos = choice
 
-            if path.apply(gen_rule, pos):
+            # remove the direct inverse operation
+            if len(path.path)>0 and INV_GEN_RULES[gen_rule] == path.path[-1][1] and pos == path.path[-1][2]:
+                continue
+
+            # generate the given substitution
+            given_subst = {}
+            for var in INST_VARS[gen_rule]:
+                given_subst[var] = gen_expression(max_height)
+
+            if path.apply(gen_rule, pos, Subst(given_subst), inst_vars=INST_VARS, forbiden_heads=forbidden_heads):
                 break
 
     return path

@@ -73,7 +73,8 @@ def rl_train(
     writer = SummaryWriter(lab.folder_path)
 
     try:
-        for step in range(num_steps):
+        step = 0
+        while step < num_steps:
 
             print(f"Step {step + 1}/{num_steps}")
 
@@ -154,11 +155,12 @@ def rl_train(
                 if save_interval is not None and t % save_interval == 0:
                     lab.states['t'] = t
                     lab.save(f"RL-{max_step}-{t}")
+
+                step += 1
             
             except torch.OutOfMemoryError:
                 print("!!! Out of memory error. Skipping this batch !!! ")
                 optimizer.zero_grad()
-                step -= 1
 
 
     except KeyboardInterrupt:

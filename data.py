@@ -23,9 +23,9 @@ def full_path_examples(number_of_examples: int, max_step: int, max_height: int) 
     progress_bar = tqdm.tqdm(range(number_of_examples), desc="Generating examples")
 
     while True:
-        path = gen_example(max_step, max_height).get_inverse(INV_GEN_RULES)
+        path = gen_example(max_step, max_height).get_inverse(INV_GEN_RULES, INST_VARS)
 
-        for (term, _, _) in path.path:
+        for (term, _, _, _, _) in path.path:
             # if LHS = RHS, skip
             if term.args[0] == term.args[1]:
                 continue
@@ -67,16 +67,21 @@ class ExampleDataset(Dataset):
         progress_bar = tqdm.tqdm(range(number_of_examples), desc="Generating examples")
 
         while len(examples_set) < number_of_examples:
-            path = gen_example(max_step, max_height).get_inverse(INV_GEN_RULES)
+            path = gen_example(max_step, max_height).get_inverse(INV_GEN_RULES, INST_VARS)
 
-            for (term, opt, pos) in path.path:
+            for (term, opt, pos, _, given_subst) in path.path:
                 # if LHS = RHS, skip
                 if term.args[0] == term.args[1]:
                     continue
 
-                prompt = tuple(tok_encode(term.sig_str(self.sig) + " : " + RULE_NAMES[opt]+ " " + " ".join(str(p) for p in pos)))
-                input = (SOS_ID, ) + prompt
-                label = prompt + (EOS_ID, )
+                # synthesis and encode the prompt
+                prompt = term.sig_str(self.sig) + " : " + RULE_NAMES[opt]+ " " + " ".join(str(p) for p in pos) + " " + given_subst.sig_str(self.sig)
+                encoded_ids = tuple(tok_encode(prompt))
+
+                print(prompt)
+                
+                input = (SOS_ID, ) + encoded_ids
+                label = encoded_ids + (EOS_ID, )
 
                 # check the length
                 if len(input) > max_len:

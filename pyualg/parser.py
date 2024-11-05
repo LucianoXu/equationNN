@@ -1,8 +1,16 @@
 # create the parser for the given signature
 
-from .core import Signature, Term, RewriteRule
+from .core import Signature, Term, RewriteRule, Subst
 import ply.lex as lex, ply.yacc as yacc
 import re
+
+# grammar design:
+# result : expression | rewriterule | subst
+# rewriterule : expression TO expression
+# expression : ID | '(' expression ID expression ')' | '(' ID expression* ')'
+# subst : '{' '}' | '{' ID ':' expression (',' ID ':' expression)* '}'
+# ID : '[a-zA-Z_][a-zA-Z_0-9]*'
+# TO : '->'
 
 class Parser:
     def __init__(self, sig: Signature, **kwargs):
@@ -17,7 +25,7 @@ class Parser:
 
 
         self.tokens = ['ID', 'TO'] + list(self.reserved.values())
-        self.literals = ['(', ')']
+        self.literals = ['(', ')', '{', '}', ':', ',']
         def t_ID(t):
             r'[$a-zA-Z_][a-zA-Z_0-9]*'
             t.type = self.reserved.get(t.value, 'ID')
@@ -53,6 +61,7 @@ class Parser:
             '''
             result  : expression 
                     | rewriterule
+                    | subst
             '''
             p[0] = p[1]
         self.p_result = p_result
@@ -67,6 +76,30 @@ class Parser:
             'expression : ID'
             p[0] = Term(p[1])
         self.p_ID = p_ID
+
+        def p_subst(p):
+            '''
+            subst : '{' '}'
+                  | '{' subst_list '}'
+            '''
+            if len(p) == 3:
+                p[0] = {}
+            else:
+                p[0] = Subst(p[2])
+        self.p_subst = p_subst
+
+        def p_subst_list(p):
+            '''
+            subst_list : ID ':' expression
+                       | subst_list ',' ID ':' expression
+            '''
+            if len(p) == 4:
+                p[0] = {p[1]: p[3]}
+            else:
+                p[0] = p[1]
+                p[0][p[3]] = p[5]
+                
+        self.p_subst_list = p_subst_list
 
         # Helper function to capture symbol, arity, and properties
         def create_production_function(symbol, arity, is_infix):
@@ -117,5 +150,12 @@ class Parser:
         res = self.parser.parse(input_string, lexer = self.lexer)
         if not isinstance(res, RewriteRule):
             raise ValueError(f"Parsing failed for the input string '{input_string}' as a rewrite rule.")
+
+        return res
+    
+    def parse_subst(self, input_string: str) -> Subst:
+        res = self.parser.parse(input_string, lexer = self.lexer)
+        if not isinstance(res, Subst):
+            raise ValueError(f"Parsing failed for the input string '{input_string}' as a substitution.")
 
         return res

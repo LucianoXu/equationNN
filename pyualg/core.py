@@ -124,17 +124,17 @@ class Term:
         '''
         return random.choice(list(self.all_nodes()))
     
-    def apply_at(self, opt: TermOpt, sig: Signature, pos: tuple[int, ...] = ()) -> Optional[Term]:
+    def apply_at(self, opt: TermOpt, sig: Signature, pos: tuple[int, ...] = (), given_subst: Optional[Subst] = None, forbiden_heads: Optional[set[str]] = None) -> Optional[tuple[Term, Subst]]:
         '''
         Apply the function opt to the term at the specified position.
         '''
         if not pos:
-            return opt(sig, self)
+            return opt(sig, self, given_subst, forbiden_heads)
         else:
-            subst_tree = self.args[pos[0]].apply_at(opt, sig, pos[1:])
+            subst_tree = self.args[pos[0]].apply_at(opt, sig, pos[1:], given_subst)
             if subst_tree is None:
                 return None
-            return Term(self.head, self.args[:pos[0]] + (subst_tree,) + self.args[pos[0] + 1:])
+            return Term(self.head, self.args[:pos[0]] + (subst_tree[0],) + self.args[pos[0] + 1:]), subst_tree[1]
         
 VAR_COUNT = 0
 def unique() -> Term:
@@ -156,10 +156,25 @@ class Subst:
         return isinstance(other, Subst) and self.data == other.data
 
     def __str__(self):
-        return str(self.data)
+        if not self.data:
+            return "{}"
+        
+        return "{" + ", ".join([f"{key} : {value}" for key, value in self.data.items()]) + "}"
+    
+    def sig_str(self, sig: Signature) -> str:
+        if not self.data:
+            return "{}"
+        
+        return "{" + ", ".join([f"{key} : {value.sig_str(sig)}" for key, value in self.data.items()]) + "}"
     
     def __getitem__(self, key: str) -> Term:
         return self.data[key]
+    
+    def partial_subset(self, keys: set[str]) -> Subst:
+        '''
+        Return the partial substitution with the specified keys
+        '''
+        return Subst({ key: self.data[key] for key in keys if key in self.data })
     
     def __call__(self, term: Term) -> Term:
         '''
@@ -184,15 +199,22 @@ class MatchingProblem:
         
         return "{" + ", ".join([f"{lhs} ≲? {rhs}" for lhs, rhs in self.ineqs]) + "}"
 
-    def solve(self) -> Optional[Subst]:
-        return MatchingProblem.solve_matching(self)
+    def solve(self, given_subst: Optional[Subst] = None, forbiden_heads: Optional[set[str]] = None) -> Optional[Subst]:
+        return MatchingProblem.solve_matching(self, given_subst, forbiden_heads)
 
     @staticmethod
-    def solve_matching(mp: MatchingProblem) -> Subst | None:
+    def solve_matching(mp: MatchingProblem, given_subst: Optional[Subst] = None, forbiden_heads: Optional[set[str]] = None) -> Subst | None:
+        
+        # the set of heads that are not allowed to be assigned to variables
+        forbiden_heads = set() if forbiden_heads is None else forbiden_heads
 
         ineqs = mp.ineqs
         sig = mp.sig
-        subst : dict[str, Term] = {}
+
+        if given_subst is not None:
+            subst = deepcopy(given_subst.data)
+        else:
+            subst : dict[str, Term] = {}
 
         while len(ineqs) > 0:
             lhs, rhs = ineqs[0]
@@ -205,6 +227,9 @@ class MatchingProblem:
                     else:
                         return None
                 else:
+                    if rhs.head in forbiden_heads:
+                        return None
+                    
                     subst[lhs.head] = rhs
                     ineqs = ineqs[1:]
                     continue
@@ -227,8 +252,8 @@ class MatchingProblem:
 
 
     @staticmethod
-    def single_match(sig: Signature, lhs : Term, rhs : Term) -> Subst | None:
-        return MatchingProblem(sig, [(lhs, rhs)]).solve()
+    def single_match(sig: Signature, lhs : Term, rhs : Term, given_subst: Optional[Subst] = None, forbiden_heads: Optional[set[str]] = None) -> Subst | None:
+        return MatchingProblem(sig, [(lhs, rhs)]).solve(given_subst, forbiden_heads)
     
 
 class RewriteRule:
@@ -238,21 +263,28 @@ class RewriteRule:
 
     def vars(self, sig: Signature) -> set[str]:
         return self.lhs.vars(sig) | self.rhs.vars(sig)
+    
+    def inst_vars(self, sig: Signature) -> set[str]:
+        '''
+        return the set of variables that need to be instantiated
+        '''
+        return self.rhs.vars(sig) - self.lhs.vars(sig)
+
 
     def __str__(self):
         return f"{self.lhs} -> {self.rhs}"
     
-    def __call__(self, sig: Signature, term: Term) -> Optional[Term]:
+    def __call__(self, sig: Signature, term: Term, given_subst: Optional[Subst] = None, forbiden_heads: Optional[set[str]] = None) -> Optional[tuple[Term, Subst]]:
         '''
         Apply the rule to the term.
         Result: the rewriten result, or None if the rule does not match the term.
         '''
-        matcher = MatchingProblem.single_match(sig, self.lhs, term)
+        matcher = MatchingProblem.single_match(sig, self.lhs, term, given_subst, forbiden_heads)
 
         if matcher is None:
             return None
         
-        return matcher(self.rhs)
+        return matcher(self.rhs), matcher
         
     def subst(self, subst: Subst) -> RewriteRule:
         return RewriteRule(subst(self.lhs), subst(self.rhs))
@@ -314,7 +346,7 @@ class TRS:
         for rule in rules:
             new_term = rule(sig, term)
             if new_term is not None:
-                return new_term
+                return new_term[0]
                         
         if not term.is_atom:
             # try to rewrite the subterms
@@ -347,13 +379,13 @@ class TRS:
         for rule in rules:
             new_term = rule(sig, term)
             if new_term is not None:
-                return new_term
+                return new_term[0]
         
         return None
 
 
 
-TermOpt = Callable[[Signature, Term], Optional[Term]]
+TermOpt = Callable[[Signature, Term, Optional[Subst], Optional[set[str]]], Optional[tuple[Term, Subst]]]
 
 __all__ = ['RESERVED_TOKENS', 'Property', 'Signature', 'Term', 'unique', 'Subst', 'MatchingProblem', 'RewriteRule',
            'TRS', 'TermOpt']
