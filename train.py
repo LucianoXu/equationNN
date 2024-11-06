@@ -144,7 +144,7 @@ if __name__ == "__main__":
         ),
 
         context_length = args.context_length,
-        ckpt_folder='./ckpt/VSuper2',
+        ckpt_folder='./ckpt/VSuperF1',
         load_version_name='none',
 
         lr = 2e-4,
@@ -159,5 +159,5 @@ if __name__ == "__main__":
         max_step = 6, 
         max_height = 3,
 
-        save_interval = 100000,
+        save_interval = 4854,
     )
