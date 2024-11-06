@@ -3,6 +3,17 @@ from model import *
 
 PADDING_ID = token2id['<PAD>']
 EOS_ID = token2id['<EOS>']
+ACT_ID = token2id[':']
+
+def get_input_seq_len(input_ids: list[int]) -> int:
+    '''
+    Get the length of the input sequence before the colon.
+    '''
+    try:
+        return input_ids.index(ACT_ID) + 1
+    except ValueError:
+        return 0
+
 
 def generate(model, code: str, max_len: int = 256, T: float = 1.0) -> str:
     '''
@@ -15,14 +26,16 @@ def generate(model, code: str, max_len: int = 256, T: float = 1.0) -> str:
     - T: the temperature coefficient to control randomness (default is 1.0)
     '''
     device = model.device
-    encoding = torch.tensor([tok_encode("<SOS> " +code)], device=device)
+    encoding_ls = tok_encode("<SOS> " +code)
+    input_seq_len = torch.tensor([get_input_seq_len(encoding_ls)], device=device)
+    encoding_tensor = torch.tensor([encoding_ls], device=device)
 
     output = []
     
     # autoregressive generation
     with torch.no_grad():
         for i in range(max_len):
-            logits = model(encoding)
+            logits = model(encoding_tensor, input_seq_len)
 
             # Scale the logits by the temperature
             logits = logits[0, -1, :] / T
@@ -39,11 +52,11 @@ def generate(model, code: str, max_len: int = 256, T: float = 1.0) -> str:
                 # remove the <EOS> token
                 output = output[:-1]
                 break
-            encoding = torch.cat((encoding, torch.tensor([[output[-1]]], device = device)), dim=1)
+            encoding_tensor = torch.cat((encoding_tensor, torch.tensor([[output[-1]]], device = device)), dim=1)
 
     return tok_decode(output)
 
-def batch_predict(model, beams: list[list[int]], context_length: int = 256, T: float = 1.0) -> tuple[list[int], torch.Tensor]:
+def batch_predict(model, beams: list[list[int]], input_seq_lens: list[int], context_length: int = 256, T: float = 1.0) -> tuple[list[int], torch.Tensor]:
     '''
     Generate the next tokens for each beam using the model, with temperature scaling.
 
@@ -56,14 +69,16 @@ def batch_predict(model, beams: list[list[int]], context_length: int = 256, T: f
     max_len = min(max(len(beam) for beam in beams), context_length)
     batch_size = len(beams)
 
+    # calculate the padding lengths
+    pad_seq_lens = [max(0, max_len - len(beam)) for beam in beams]
+
     # padding at the beginning of the beams
-    padded_beams = [[PADDING_ID] * max(0, max_len - len(beam)) + beam[-context_length:] for beam in beams]
-    attention_masks = [[0] * max(0, max_len - len(beam)) + [1] * min(len(beam), context_length) for beam in beams]
+    padded_beams = [[PADDING_ID] * pad_seq_lens[i] + beams[i][-context_length:] for i in range(batch_size)]
+
     encoding = torch.tensor(padded_beams, device=device)
-    attention_masks = torch.tensor(attention_masks, device=device)
 
     # autoregressive generation
-    logits = model(encoding[:, -context_length:], attention_masks)
+    logits = model(encoding, input_seq_lens, pad_seq_lens)
     logits = logits[range(batch_size), -1, :] / T
 
     probabilities = F.softmax(logits, dim=-1)
@@ -91,7 +106,11 @@ def batch_generation(model, beams: list[str], context_length: int = 256, T: floa
     # while there are still beams to predict
     while len(input_ids) > 0:
         indices = list(input_ids.keys())
-        next_tokens, predict_probabilities = batch_predict(model, [input_ids[i] for i in input_ids], context_length, T)
+        next_tokens, predict_probabilities = batch_predict(
+            model, 
+            [input_ids[i] for i in input_ids], 
+            [input_lens[i] for i in input_ids], 
+            context_length, T)
         predict_probabilities = torch.log(predict_probabilities)
 
         # iterate through the current beams

@@ -186,7 +186,7 @@ if __name__ == '__main__':
         ),
         context_length = args.context_length,
 
-        ckpt_folder = "./ckpt/VSuper",
+        ckpt_folder = "./ckpt/VSuper3",
         input_version_name = 'latest',
 
         lr = 2e-5,
@@ -199,7 +199,7 @@ if __name__ == '__main__':
         accumulaton_step = 20,
         rl_step_limit=22,
         rl_temperature=0.6,
-        max_step=5,
+        max_step=4,
 
         save_interval=10000
     )

@@ -116,7 +116,8 @@ def get_collate_fn(device: str = 'cpu'):
 
         padded_inputs = []
         padded_labels = []
-        masks = []
+        input_seq_lens = []
+        loss_masks = []
 
         for input, label in batch:
 
@@ -129,10 +130,14 @@ def get_collate_fn(device: str = 'cpu'):
             # only predict the tokens after the colon
             colon_idx = padded_label.index(COLON_ID)
             
-            mask = [0] * (colon_idx + 1) + [1] * (len(input) - colon_idx - 1) + [0] * (batch_max_len - len(input))
-            masks.append(mask)
+            loss_mask = [0] * (colon_idx + 1) + [1] * (len(input) - colon_idx - 1) + [0] * (batch_max_len - len(input))
+            loss_masks.append(loss_mask)
 
-        return torch.tensor(padded_inputs, device = device), torch.tensor(padded_labels, device = device), torch.tensor(masks, device = device)
+            input_seq_lens.append(colon_idx + 1)
+
+            
+
+        return torch.tensor(padded_inputs, device = device), torch.tensor(padded_labels, device = device), torch.tensor(input_seq_lens, device = device), torch.tensor(loss_masks, device = device)
     
     return collate_fn
 
