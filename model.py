@@ -222,6 +222,66 @@ class TransformerBlock(nn.Module):
         out = h + self.feed_forward(self.ffn_norm(h))
         return out
 
+def mask_calc(batch_size: int, seq_len: int, device: torch.device,
+            front_pad_lengths: Optional[torch.Tensor|list[int]] = None, 
+            input_lengths: Optional[torch.Tensor|list[int]] = None) -> torch.Tensor:
+        
+        # Create causal mask
+        # Shape: (seqlen, seqlen)
+        # example: 
+        # 1 0 0 0
+        # 1 1 0 0
+        # 1 1 1 0
+        # 1 1 1 1
+        causal_mask = ~ torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1).bool()
+
+        # Create pad attention mask
+        # Shape: (batch_size, seqlen, seqlen)
+        # example (one sequence):
+        # 0 0 0 0
+        # 0 1 1 1
+        # 0 1 1 1
+        # 0 1 1 1
+        if front_pad_lengths is None:
+            front_pad_lengths = torch.zeros(batch_size, device=device)
+        else:
+            front_pad_lengths = torch.tensor(front_pad_lengths, device=device)
+        pad_mask = torch.arange(seq_len, device=device) >= front_pad_lengths.unsqueeze(1)
+        pad_attn_mask = pad_mask.unsqueeze(1) & pad_mask.unsqueeze(2)
+
+
+        # Create input attention mask
+        # Shape: (batch_size, seqlen, seqlen)
+        # example (one sequence): 
+        # 1 1 1 0
+        # 1 1 1 0
+        # 1 1 1 0
+        # 0 0 0 0
+        if input_lengths is None:
+            input_lengths = torch.zeros(batch_size, device=device)
+        else:
+            input_lengths = torch.tensor(input_lengths, device=device)
+        input_mask = torch.arange(seq_len, device=device).unsqueeze(0) < (input_lengths + front_pad_lengths).unsqueeze(1)
+        input_attn_mask = input_mask.unsqueeze(1) & input_mask.unsqueeze(2)  # Shape: (batch_size, seqlen, seqlen)
+
+        # Combine masks:
+        # (casual_mask | input_attn_mask) & pad_attn_mask
+        # example:
+        # 0 0 0 0
+        # 0 1 1 0
+        # 0 1 1 0
+        # 0 1 1 1
+        combined_mask = causal_mask.unsqueeze(0).expand(batch_size, seq_len, seq_len)
+        combined_mask = (combined_mask | input_attn_mask) & pad_attn_mask
+
+        # Expand mask to match attention heads
+        mask = torch.where(combined_mask, torch.zeros(batch_size, seq_len, seq_len, device=device), -1e9)
+
+        # Handle MPS NaN issue
+        if device.type == 'mps':
+            mask = torch.nan_to_num(mask, nan=0.0)
+
+        return mask.unsqueeze(1)
 
 class Llama3(nn.Module):
     def __init__(self,
@@ -285,30 +345,18 @@ class Llama3(nn.Module):
         self.output.reset_parameters()
 
 
-    def forward(self, tokens: torch.Tensor, attention_masks: Optional[torch.Tensor] = None):
+    def forward(self, tokens: torch.Tensor, input_seq_len: Optional[torch.Tensor|list[int]] = None, front_pad_len: Optional[torch.Tensor|list[int]] = None):
+        '''
+        input_seq_len: (batch_size,) shape. The length of the input sequence for each example in the batch. (Does not include front_pad_len)
+        The input sequence tokens are able to attend to each other within the input sequence. The attention for rest of the tokens follow the causal mask.
+        '''
         # check sequence length
         assert tokens.shape[1] <= self.model_args.context_length, "sequence length exceeds context length"
-        seqlen = tokens.shape[1]
+        batch_size, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
         freqs_cis = self.freqs_cis[:seqlen]
 
-
-        mask = torch.full((seqlen, seqlen), float("-inf"), device=self.device)
-        mask = torch.triu(mask, diagonal=1).type_as(h)
-
-        # get around the bug in MPS
-        if self.device.type == 'mps':
-            mask = torch.nan_to_num(mask, nan=0.0)
-
-        if attention_masks is not None:
-            attention_masks = attention_masks.to(self.device)
-            # Convert attention mask from (batch_size, seq_len) to (batch_size, 1, 1, seq_len)
-            attention_masks = attention_masks[:, None, None, :]
-            padding_mask = torch.where(attention_masks == 0, 
-                torch.tensor(-1e9, device=self.device),
-                torch.tensor(0.0, device=self.device))
-            mask = mask[None, None, :, :]
-            mask = mask + padding_mask
+        mask = mask_calc(batch_size, seqlen, self.device, front_pad_lengths=front_pad_len, input_lengths=input_seq_len)
 
         for layer in self.layers:
             h = layer(h, freqs_cis, mask)

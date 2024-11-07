@@ -115,7 +115,7 @@ def get_collate_fn(device: str = 'cpu'):
 
         padded_inputs = []
         padded_labels = []
-        masks = []
+        loss_masks = []
 
         for input, label in batch:
 
@@ -125,10 +125,10 @@ def get_collate_fn(device: str = 'cpu'):
             padded_label = list(label) + [PAD_ID] * (batch_max_len - len(input))
             padded_labels.append(padded_label)
             
-            mask = [1] * len(input) + [0] * (batch_max_len - len(input))
-            masks.append(mask)
+            loss_mask = [1] * len(input) + [0] * (batch_max_len - len(input))
+            loss_masks.append(loss_mask)
 
-        return torch.tensor(padded_inputs, device = device), torch.tensor(padded_labels, device = device), torch.tensor(masks, device = device)
+        return torch.tensor(padded_inputs, device = device), torch.tensor(padded_labels, device = device), torch.tensor(loss_masks, device = device)
     
     return collate_fn
 

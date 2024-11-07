@@ -70,7 +70,7 @@ def forever_test(
 if __name__ == '__main__':
     args = SmallArgs()
     model = Llama3(args, device='cuda')
-    ELab('ckpt/VSuper', version_name='latest', model=model)
+    ELab('ckpt/VSuperF2', version_name='latest', model=model)
 
     # forever_test(
     #     model,
@@ -81,7 +81,7 @@ if __name__ == '__main__':
     # single_test(term)
 
     # FAIL 4283 x * (x * y) = x * (y * x)
-    # term = parser.parse_term('((x * (x * y)) = (x * (y * x)))')
+    term = parser.parse_term('((x * (x * y)) = (x * (y * x)))')
 
     # 3257 x * x = x * (x * (x * x))
     # term = parser.parse_term('((x * x) = (x * (x * (x * x))))')
@@ -90,7 +90,7 @@ if __name__ == '__main__':
     # term = parser.parse_term('((((u * z) * (((z * z) * (z * z)) * (u * u))) * (y * u)) = (((u * u) * y) * (u * z)))')
     # single_test(term)
 
-    term = parser.parse_term('((x * y) = (y * x))')
+    # term = parser.parse_term('((x * y) = (y * x))')
 
     # test the example
     test_example(term, model, args.context_length, 0.6, 50, 50)
