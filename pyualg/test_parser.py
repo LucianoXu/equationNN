@@ -90,3 +90,20 @@ def test_trs():
     term = parser.parse_term('(~ (a | b))')
     result = trs(term)
     assert result == parser.parse_term('((~ a) & (~ b))')
+
+
+def test_subst():
+    sig = Signature(
+        {
+            '*': (2, {'Infix'}),
+        }
+    )
+    parser = Parser(sig)
+    subst = parser.parse_subst('{ } ')
+    assert subst == Subst({})
+
+    subst = parser.parse_subst('{ x : y } ')
+    assert subst == Subst({'x': Term('y')})
+
+    subst = parser.parse_subst('{ x : y, z : (x * y) } ')
+    assert subst == Subst({'x': Term('y'), 'z': Term('*', (Term('x'), Term('y')))})

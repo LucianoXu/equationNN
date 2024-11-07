@@ -283,6 +283,11 @@ class RewriteRule:
 
         if matcher is None:
             return None
+    
+        inst_vars = self.inst_vars(sig)
+        # check whether the inst_vars are provided in given_subst
+        if inst_vars and (given_subst is None or not inst_vars.issubset(given_subst.data.keys())):
+            return None
         
         return matcher(self.rhs), matcher
         

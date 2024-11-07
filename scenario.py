@@ -65,40 +65,44 @@ def gen_example(max_step: int = 10, max_height: int = 3) -> RewritePath:
     The path has at most max_step steps.
     The algorithm will check all possible choices of rules and positions at each step. If no choice is possible, the path will be returned directly.
     '''
-    term = gen_expression(max_height)
-    path = RewritePath(signature, (), Term('=', (term, term)))
+    while True:
 
-    for _ in range(max_step):
-        all_nodes = list(path.current.all_nodes())
-        # get the outer product of all_nodes and [r_L2R, r_R2L]
-        choices = [(rule, pos) for pos, _ in all_nodes for rule in [r_L2R, r_R2L]]
-        while True:
+        term = gen_expression(max_height)
+        path = RewritePath(signature, (), Term('=', (term, term)))
 
-            # if no choices, return the path directly without further trying
-            if not choices:
-                return path
-    
-            # randomly choose one rule in the gen_rules
-            choice = random.choice(choices)
-            choices.remove(choice)
+        for _ in range(max_step):
+            all_nodes = list(path.current.all_nodes())
+            # get the outer product of all_nodes and [r_L2R, r_R2L]
+            choices = [(rule, pos) for pos, _ in all_nodes for rule in [r_L2R, r_R2L]]
+            while True:
 
-            # randomly select one rule and position
-            gen_rule, pos = choice
+                # if no choices, return the path directly without further trying
+                if not choices:
+                    return path
+        
+                # randomly choose one rule in the gen_rules
+                choice = random.choice(choices)
+                choices.remove(choice)
 
-            # remove the direct inverse operation
-            if len(path.path)>0 and INV_GEN_RULES[gen_rule] == path.path[-1][1] and pos == path.path[-1][2]:
-                continue
+                # randomly select one rule and position
+                gen_rule, pos = choice
 
-            # generate the given substitution
-            given_subst = {}
-            for var in INST_VARS[gen_rule]:
-                given_subst[var] = gen_expression(max_height)
+                # remove the direct inverse operation
+                if len(path.path)>0 and INV_GEN_RULES[gen_rule] == path.path[-1][1] and pos == path.path[-1][2]:
+                    continue
 
-            if path.apply(gen_rule, pos, Subst(given_subst), inst_vars=INST_VARS, forbiden_heads=forbidden_heads):
-                break
+                # generate the given substitution
+                given_subst = {}
+                for var in INST_VARS[gen_rule]:
+                    given_subst[var] = gen_expression(max_height)
 
-    return path
-    
+                if path.apply(gen_rule, pos, Subst(given_subst), inst_vars=INST_VARS, forbiden_heads=forbidden_heads):
+                    break
+
+        # check whether R2L is in the path
+        if any([path.path[i][1] == r_R2L for i in range(len(path.path))]):
+            return path
+        
 
 
 

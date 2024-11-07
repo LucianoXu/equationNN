@@ -155,7 +155,7 @@ if __name__ == "__main__":
 
         num_epochs = 10, 
         epoch_data_length = 100000, 
-        batch_size = 256, 
+        batch_size = 128, 
         max_step = 6, 
         max_height = 3,
 

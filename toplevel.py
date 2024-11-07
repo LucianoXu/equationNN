@@ -37,12 +37,13 @@ def prove(kernel: ProofKernel, agent: Callable[[ProofKernel], str]):
     UI design:
 
     Command Language:
-        cmd ::= L2R pos | R2L pos
+        cmd ::= L2R pos subst | R2L pos subst
         pos ::= 0 | 1 | pos 0 | pos 1
+        subst ::= {} | {(var : term)*}
 
     Rules:
-        L2R: (X * Y) -> ((Y * Y) * X)
-        R2L: ((Y * Y) * X) -> (X * Y)
+        L2R: X -> (Y * (Y * (X * Y)))
+        R2L: (Y * (Y * (X * Y))) -> X
 
     Step: # | Last Reward: # | Total Reward: # | Equation :
         Action: #
@@ -54,12 +55,13 @@ def prove(kernel: ProofKernel, agent: Callable[[ProofKernel], str]):
 '''
 
 Command Language:
-    cmd ::= L2R pos | R2L pos
+    cmd ::= L2R pos subst | R2L pos subst
     pos ::= 0 | 1 | pos 0 | pos 1
+    subst ::= {} | {(var : term)*}
 
 Rules:
-    L2R: (X * Y) -> ((Y * Y) * X)
-    R2L: ((Y * Y) * X) -> (X * Y)
+    L2R: X -> (Y * (Y * (X * Y)))
+    R2L: (Y * (Y * (X * Y))) -> X
 
 '''
     )
@@ -86,7 +88,7 @@ Rules:
 if __name__ == '__main__':
     # run the toplevel prover and have fun!
     while True:
-        path = gen_example(5, 3)
+        path = gen_example(3, 3)
         term = path.current
 
         # skip the trivial case

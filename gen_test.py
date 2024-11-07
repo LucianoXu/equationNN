@@ -62,15 +62,33 @@ def forever_test(
 
         example_test(term, model, context_length, T, beams, step_limit)
 
+def vampire_test(max_step = 4, max_height = 3):
+    while True:
+        path = gen_example(max_step=max_step, max_height=max_height)
+        term = path.current
+
+        if term.args[0] == term.args[1]:
+            continue
+
+        print("Problem: ", term.sig_str(signature))
+        print("Vampire result ... ", end="", flush=True)
+        if vampire_solve(vampire, Axiom, term):
+            print("Succeed")
+        else:
+            print("Fail")
+            input()
+
 
 if __name__ == '__main__':
+    vampire_test(15, 3)
+
     args = SmallArgs()
     model = Llama3(args, device='cuda')
     ELab('ckpt/Eq73', version_name='latest', model=model)
 
     forever_test(
         model,
-        context_length=args.context_length, max_step = 3, beams = 1)
+        context_length=args.context_length, max_step = 6, beams = 10, step_limit = 10)
 
     # SUCCEED 307 x * x = x * (x * x)
     # term = parser.parse_term('((x * x) = (x * (x * x)))')

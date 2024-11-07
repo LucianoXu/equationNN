@@ -83,7 +83,7 @@ class Parser:
                   | '{' subst_list '}'
             '''
             if len(p) == 3:
-                p[0] = {}
+                p[0] = Subst({})
             else:
                 p[0] = Subst(p[2])
         self.p_subst = p_subst
