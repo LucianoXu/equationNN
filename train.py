@@ -87,10 +87,10 @@ def train(
             for i, batch in enumerate(epoch_iterator):
 
                 # Move batch data to the device
-                text, label, mask = batch
+                text, label, loss_mask = batch
                 text = text.to(device)
                 label = label.to(device)
-                mask = mask.to(device)
+                loss_mask = loss_mask.to(device)
                 
                 # Forward pass
                 logits = model(text)
@@ -98,8 +98,8 @@ def train(
                 # Flatten the logits and labels to compute loss
                 loss = loss_fn(logits.reshape(-1, logits.size(-1)), label.reshape(-1))
                 # Apply mask to the loss
-                loss = loss * mask.view(-1).float()
-                loss = loss.sum() / mask.sum().float() # Average loss over non-padding tokens
+                loss = loss * loss_mask.view(-1).float()
+                loss = loss.sum() / loss_mask.sum().float() # Average loss over non-padding tokens
                 loss.backward()
 
                 raw_grad_norm = get_grad_norm(model)
@@ -159,5 +159,5 @@ if __name__ == "__main__":
         max_step = 6, 
         max_height = 3,
 
-        save_interval = 100000,
+        save_interval = 4854,
     )

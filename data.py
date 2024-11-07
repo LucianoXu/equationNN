@@ -114,14 +114,13 @@ def get_collate_fn(device: str = 'cpu'):
     def collate_fn(batch):
 
         PAD_ID = token2id['<PAD>']
-        COLON_ID = token2id[':']
 
         # Find the longest sequence in the batch
         batch_max_len = max([len(x[0]) for x in batch])
 
         padded_inputs = []
         padded_labels = []
-        masks = []
+        loss_masks = []
 
         for input, label in batch:
 
@@ -130,14 +129,11 @@ def get_collate_fn(device: str = 'cpu'):
 
             padded_label = list(label) + [PAD_ID] * (batch_max_len - len(input))
             padded_labels.append(padded_label)
-
-            # only predict the tokens after the colon
-            colon_idx = padded_label.index(COLON_ID)
             
-            mask = [0] * (colon_idx + 1) + [1] * (len(input) - colon_idx - 1) + [0] * (batch_max_len - len(input))
-            masks.append(mask)
+            loss_mask = [1] * len(input) + [0] * (batch_max_len - len(input))
+            loss_masks.append(loss_mask)
 
-        return torch.tensor(padded_inputs, device = device), torch.tensor(padded_labels, device = device), torch.tensor(masks, device = device)
+        return torch.tensor(padded_inputs, device = device), torch.tensor(padded_labels, device = device), torch.tensor(loss_masks, device = device)
     
     return collate_fn
 

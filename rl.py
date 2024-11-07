@@ -179,27 +179,28 @@ def rl_train(
 if __name__ == '__main__':
     from small_args import SmallArgs
     args = SmallArgs()
-    rl_train(
-        Llama3(
-            model_args = args,
-            device='cuda'
-        ),
-        context_length = args.context_length,
+    for i in range(5, 10):
+        rl_train(
+            Llama3(
+                model_args = args,
+                device='cuda'
+            ),
+            context_length = args.context_length,
 
-        ckpt_folder = "./ckpt/VSuper",
-        input_version_name = 'latest',
+            ckpt_folder = "./ckpt/Eq73",
+            input_version_name = 'latest',
 
-        lr = 2e-5,
-        weight_decay=0.01,
-        betas=(0.9, 0.99),
-        grad_norm_clip=1.0,
+            lr = 2e-5,
+            weight_decay=0.01,
+            betas=(0.9, 0.99),
+            grad_norm_clip=1.0,
 
-        num_steps = 200,
-        batch_size = 6,
-        accumulaton_step = 20,
-        rl_step_limit=22,
-        rl_temperature=0.6,
-        max_step=5,
+            num_steps = 400,
+            batch_size = 4,
+            accumulaton_step = 30,
+            rl_step_limit=30,
+            rl_temperature=0.6,
+            max_step=i,
 
-        save_interval=10000
-    )
+            save_interval=10000
+        )

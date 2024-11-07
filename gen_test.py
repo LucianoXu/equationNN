@@ -77,7 +77,7 @@ if __name__ == '__main__':
     # single_test(term)
 
     # FAIL 4283 x * (x * y) = x * (y * x)
-    # term = parser.parse_term('((x * (x * y)) = (x * (y * x)))')
+    term = parser.parse_term('((x * (x * y)) = (x * (y * x)))')
 
     # 3257 x * x = x * (x * (x * x))
     # term = parser.parse_term('((x * x) = (x * (x * (x * x))))')

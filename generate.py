@@ -56,14 +56,16 @@ def batch_predict(model, beams: list[list[int]], context_length: int = 256, T: f
     max_len = min(max(len(beam) for beam in beams), context_length)
     batch_size = len(beams)
 
+    # calculate the padding lengths
+    pad_seq_lens = [max(0, max_len - len(beam)) for beam in beams]
+
     # padding at the beginning of the beams
-    padded_beams = [[PADDING_ID] * max(0, max_len - len(beam)) + beam[-context_length:] for beam in beams]
-    attention_masks = [[0] * max(0, max_len - len(beam)) + [1] * min(len(beam), context_length) for beam in beams]
+    padded_beams = [[PADDING_ID] * pad_seq_lens[i] + beams[i][-context_length:] for i in range(batch_size)]
+
     encoding = torch.tensor(padded_beams, device=device)
-    attention_masks = torch.tensor(attention_masks, device=device)
 
     # autoregressive generation
-    logits = model(encoding[:, -context_length:], attention_masks)
+    logits = model(encoding, None, pad_seq_lens)
     logits = logits[range(batch_size), -1, :] / T
 
     probabilities = F.softmax(logits, dim=-1)
@@ -91,7 +93,10 @@ def batch_generation(model, beams: list[str], context_length: int = 256, T: floa
     # while there are still beams to predict
     while len(input_ids) > 0:
         indices = list(input_ids.keys())
-        next_tokens, predict_probabilities = batch_predict(model, [input_ids[i] for i in input_ids], context_length, T)
+        next_tokens, predict_probabilities = batch_predict(
+            model, 
+            [input_ids[i] for i in input_ids], 
+            context_length, T)
         predict_probabilities = torch.log(predict_probabilities)
 
         # iterate through the current beams
