@@ -10,30 +10,39 @@ def magma_to_tptp(t: Term) -> str:
     Transform the term t to TPTP format equation.
 
     Example: 
-    Input: x * x = x * (x * x)
-    Output: m(x, x) = m(x, m(x, x))
+    Input: x | x = x | (x | x)
+    Output: J(x, x) = J(x, J(x, x))
     '''
     if t.is_var(signature):
         return str(t).upper()
-    elif t.head == '*':
+    elif t.head == '|':
+        return f'j({magma_to_tptp(t.args[0])}, {magma_to_tptp(t.args[1])})'
+    elif t.head == '&':
         return f'm({magma_to_tptp(t.args[0])}, {magma_to_tptp(t.args[1])})'
+    elif t.head == '~':
+        return f'n({magma_to_tptp(t.args[0])})'
     elif t.head == '=':
         return f'{magma_to_tptp(t.args[0])} = {magma_to_tptp(t.args[1])}'
     else:
         raise ValueError(f'Invalid term {t}')
 
-def problem_to_tptp(A: Term, B: Term):
+def problem_to_tptp(A: list[Term], B: Term):
     '''
     A and B are equations.
     Transform the implication problem A -> B to TPTP format.
     '''
-    A_vars = [var.upper() for var in A.vars(signature)]
-    A_vars.sort()
+    res = ""
+
+    for i in range(len(A)):
+        eq = A[i]
+        eq_vars = [var.upper() for var in eq.vars(signature)]
+        eq_vars.sort()
+
+        res += f'fof(ax{i}, axiom, ![{", ".join(eq_vars)}] : {magma_to_tptp(eq)}).\n\n'
+
     B_vars = [var.upper() for var in B.vars(signature)]
     B_vars.sort()
 
-    # use "m" to represent the binary operation "*"
-    res = f'fof(ax, axiom, ![{", ".join(A_vars)}] : {magma_to_tptp(A)}).\n\n'
 
     res += f'fof(conj, conjecture, ![{", ".join(B_vars)}] : {magma_to_tptp(B)}).\n'
 
@@ -50,6 +59,14 @@ def invoke_vampire(vampire: str|Path, code: str) -> Optional[bool]:
 
     with Popen([vampire], stdin=PIPE, stdout=PIPE, stderr=PIPE, text=True) as proc:
         stdout, stderr = proc.communicate(code)
+        # # for debugging
+        # print("--------------------CODE----------------------")
+        # print(code)
+        # print("--------------------STDOUT----------------------")
+        # print(stdout)
+        # print("--------------------STDERR----------------------")
+        # print(stderr)
+        # print("--------------------END----------------------")
 
     if stderr:
         raise ValueError(f'Error when invoking Vampire: {stderr}')
@@ -61,7 +78,7 @@ def invoke_vampire(vampire: str|Path, code: str) -> Optional[bool]:
     else:
         return None
 
-def vampire_solve(vampire: str|Path, A: Term, B: Term) -> Optional[bool]:
+def vampire_solve(vampire: str|Path, A: list[Term], B: Term) -> Optional[bool]:
     '''
     A and B are equations.
     Solve the implication problem A -> B using Vampire.

@@ -3,10 +3,15 @@ from scenario import *
 
 TOKENS = [
     # tokesn for the term
-    '(', ')', '*', 'x', 'y', 'z', 'w', 'u', 'v', '=',
+    '(', ')', '&', '|', '~', 'x', 'y', 'z', 'w', 'u', 'v', '=',
 
     # tokens to specify the rewriting
-    'L2R', 'R2L', '0', '1',
+    'commM', 'commJ', 'assocM1', 'assocM2', 'assocJ1', 'assocJ2',
+    'absorpM1', 'absorpM2', 'absorpJ1', 'absorpJ2', 'doubleNeg1', 'doubleNeg2',
+    'deMorganM1', 'deMorganM2', 'deMorganJ1', 'deMorganJ2',
+    'OML1', 'OML2',
+    
+    '0', '1',
     '{', '}', ',', 'X', 'Y',
     
     # token to separate the term and the rewriting

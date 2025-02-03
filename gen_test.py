@@ -6,7 +6,20 @@ from elab import ELab
 from ext_solver import vampire_solve
 import json
 
-Axiom = parser.parse_term('(X = (Y * (Y * (X * Y))))')
+
+# create the axioms for vampire
+Ax_commC = parser.parse_term('((X & Y) = (Y & X))')
+Ax_commJ = parser.parse_term('((X | Y) = (Y | X))')
+Ax_assocC = parser.parse_term('(((X & Y) & Z) = (X & (Y & Z)))')
+Ax_assocJ = parser.parse_term('(((X | Y) | Z) = (X | (Y | Z)))')
+Ax_absorpC = parser.parse_term('((X & (X | Y)) = X)')
+Ax_absorpJ = parser.parse_term('((X | (X & Y)) = X)')
+Ax_doubleNeg = parser.parse_term('((~ (~ X)) = X)')
+Ax_deMorganC = parser.parse_term('((~ (X & Y)) = ((~ X) | (~ Y)))')
+Ax_deMorganJ = parser.parse_term('((~ (X | Y)) = ((~ X) & (~ Y)))')
+Ax_oml = parser.parse_term('((X | Y) = (((X | Y) & X) | ((X | Y) & (~ X))))')
+
+Axioms = [Ax_commC, Ax_commJ, Ax_assocC, Ax_assocJ, Ax_absorpC, Ax_absorpJ, Ax_doubleNeg, Ax_deMorganC, Ax_deMorganJ, Ax_oml]
 
 conf = json.load(open('config.json'))
 vampire = conf['vampire']
@@ -38,11 +51,13 @@ def example_test(
 
 
     # run vampire
-    print("Vampire result ... ", end="", flush=True)
-    if vampire_solve(vampire, Axiom, term):
-        print("Succeed")
-    else:
-        print("Fail")
+    # test the vampire solver
+    if vampire:
+        print("Vampire result ... ", end="", flush=True)
+        if vampire_solve(vampire, Axioms, term):
+            print("Succeed")
+        else:
+            print("Fail")
     
     input()
 
@@ -72,7 +87,7 @@ def vampire_test(max_step = 4, max_height = 3):
 
         print("Problem: ", term.sig_str(signature))
         print("Vampire result ... ", end="", flush=True)
-        if vampire_solve(vampire, Axiom, term):
+        if vampire_solve(vampire, Axioms, term):
             print("Succeed")
         else:
             print("Fail")
@@ -80,30 +95,14 @@ def vampire_test(max_step = 4, max_height = 3):
 
 
 if __name__ == '__main__':
-    vampire_test(15, 3)
+    vampire_test(20, 3)
 
     args = SmallArgs()
-    model = Llama3(args, device='cuda')
-    ELab('ckpt/Eq73', version_name='latest', model=model)
+    model = Llama3(args, device='mps')
+    ELab('ckpt/OML', version_name='latest', model=model)
 
     forever_test(
         model,
-        context_length=args.context_length, max_step = 6, beams = 10, step_limit = 10)
-
-    # SUCCEED 307 x * x = x * (x * x)
-    # term = parser.parse_term('((x * x) = (x * (x * x)))')
-    # single_test(term)
-
-    # FAIL 4283 x * (x * y) = x * (y * x)
-    term = parser.parse_term('((x * (x * y)) = (x * (y * x)))')
-
-    # 3257 x * x = x * (x * (x * x))
-    # term = parser.parse_term('((x * x) = (x * (x * (x * x))))')
-    # single_test(term)
-
-    # term = parser.parse_term('((((u * z) * (((z * z) * (z * z)) * (u * u))) * (y * u)) = (((u * u) * y) * (u * z)))')
-    # single_test(term)
-
-    # term = parser.parse_term('((x * y) = (y * x))')
+        context_length=args.context_length, max_step = 7, beams = 10, step_limit = 20)
 
     example_test(term, model, args.context_length, 0.6, 50, 50)

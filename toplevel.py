@@ -41,10 +41,6 @@ def prove(kernel: ProofKernel, agent: Callable[[ProofKernel], str]):
         pos ::= 0 | 1 | pos 0 | pos 1
         subst ::= {} | {(var : term)*}
 
-    Rules:
-        L2R: X -> (Y * (Y * (X * Y)))
-        R2L: (Y * (Y * (X * Y))) -> X
-
     Step: # | Last Reward: # | Total Reward: # | Equation :
         Action: #
     ...
@@ -58,10 +54,6 @@ Command Language:
     cmd ::= L2R pos subst | R2L pos subst
     pos ::= 0 | 1 | pos 0 | pos 1
     subst ::= {} | {(var : term)*}
-
-Rules:
-    L2R: X -> (Y * (Y * (X * Y)))
-    R2L: (Y * (Y * (X * Y))) -> X
 
 '''
     )

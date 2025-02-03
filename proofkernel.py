@@ -42,12 +42,10 @@ class ProofKernel:
 
         # try to apply the command. any exception will be caught and return
         try:
-            if encoding[0] == token2id['L2R']:
-                rule = r_L2R
-            elif encoding[0] == token2id['R2L']:
-                rule = r_R2L
-            else:
+            # find the rule in RULE_NAME_INV
+            if id2token[encoding[0]] not in RULE_NAMES_INV:
                 return -10.
+            rule = RULE_NAMES_INV[id2token[encoding[0]]]
 
             # find the first token2id['{'] element in encoding
             subst_start_id = encoding.index(token2id['{'])

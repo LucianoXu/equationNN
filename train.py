@@ -140,12 +140,12 @@ if __name__ == "__main__":
     train(
         Llama3(
             model_args = args,
-            device='cuda'
+            device='mps'
         ),
 
         context_length = args.context_length,
-        ckpt_folder='./ckpt/Eq73',
-        load_version_name='latest',
+        ckpt_folder='./ckpt/OML',
+        load_version_name='none',
 
         lr = 2e-5,
         weight_decay=0.01,
