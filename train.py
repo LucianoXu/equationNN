@@ -6,13 +6,15 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from torch.optim.optimizer import Optimizer
 from torch.optim.adamw import AdamW
 from tqdm import tqdm
+import json
 
-from tokenizer import token2id
+from model import token2id, ModelArgs, Llama3, SmallArgs
 
-from data import ExampleDataset, get_collate_fn
-from model import ModelArgs, Llama3
+from ds import ExampleDataset, get_collate_fn
 
 from elab import ELab, get_grad_norm
+
+device = json.load(open('config.json'))['backend']
 
 def train(
         model: Llama3,
@@ -135,16 +137,15 @@ def train(
     print("Training completed and model saved.")
 
 if __name__ == "__main__":
-    from small_args import SmallArgs
     args = SmallArgs()
     train(
         Llama3(
             model_args = args,
-            device='mps'
+            device=device
         ),
 
         context_length = args.context_length,
-        ckpt_folder='./ckpt/OML',
+        ckpt_folder='./ckpt/OMLgen',
         load_version_name='none',
 
         lr = 2e-5,
@@ -159,5 +160,5 @@ if __name__ == "__main__":
         max_step = 6, 
         max_height = 3,
 
-        save_interval = 4854,
+        save_interval = 5000,
     )

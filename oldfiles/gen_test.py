@@ -87,11 +87,14 @@ def vampire_test(max_step = 4, max_height = 3):
 
         print("Problem: ", term.sig_str(signature))
         print("Vampire result ... ", end="", flush=True)
-        if vampire_solve(vampire, Axioms, term):
-            print("Succeed")
-        else:
-            print("Fail")
+        res = vampire_solve(vampire, Axioms, term)
+        if res.is_provable:
+            print(f"Succeed in {res.elapsed_time} seconds")
+        elif res.timeout:
+            print(f"Timeout in {res.elapsed_time} seconds")
             input()
+        else:
+            raise ValueError("Vampire failed. Please check the problem.")
 
 
 if __name__ == '__main__':

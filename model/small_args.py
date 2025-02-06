@@ -1,8 +1,8 @@
-from model import ModelArgs
+from .model import ModelArgs
 from dataclasses import dataclass
 from typing import Optional
 
-from tokenizer import token2id
+from .tokenizer import token2id
 
 @dataclass
 class SmallArgs(ModelArgs):

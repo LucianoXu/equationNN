@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Optional
 from pyualg import Signature, Term, RewriteRule, TermOpt, Subst
+from scenario import r_subst
 
 class RewritePath:
     '''
@@ -52,6 +53,10 @@ class RewritePath:
         apply the operation at the position, and update the path
         return: whether the application is successful
         '''
+        # special check for r_subst
+        if opt == r_subst and pos != ():
+            return False
+
         apply_res = self.current.apply_at(opt, self.sig, pos, subst, forbiden_heads)
         if apply_res is None:
             return False
@@ -93,4 +98,15 @@ class RewritePath:
         res.append(self.current.sig_str(self.sig))
         return '\n'.join(res)
     
-    
+
+from model import tok_encode
+from scenario import RULE_NAMES, signature
+
+def path_to_examples(path: RewritePath, sig: Signature) -> list[str]:
+    '''
+    Convert the path to a list of examples
+    '''
+    res = []
+    for term, opt, pos, _, required_subst in path.path:
+        res.append(term.sig_str(sig) + " : " + RULE_NAMES[opt]+ " " + " ".join(str(p) for p in pos) + " " + required_subst.sig_str(sig))
+    return res

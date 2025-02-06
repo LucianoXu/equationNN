@@ -1,9 +1,14 @@
 # transform the implication problem to TPTP format and solve it using Vampire
 
+from dataclasses import dataclass
+import subprocess
 from typing import Optional
 from pyualg import Term, Signature
 from scenario import signature, parser
 from pathlib import Path
+import time
+from subprocess import Popen, PIPE
+
 
 def magma_to_tptp(t: Term) -> str:
     '''
@@ -48,43 +53,62 @@ def problem_to_tptp(A: list[Term], B: Term):
 
     return res
 
-def invoke_vampire(vampire: str|Path, code: str) -> Optional[bool]:
+@dataclass
+class VampireResult:
+    '''
+    The result of invoking Vampire.
+    '''
+    elapsed_time: float
+    is_provable: bool
+    timeout: bool
+
+def invoke_vampire(vampire: str|Path, code: str, timeout : float = 10) -> VampireResult:
     '''
     Call Vampire to solve the TPTP format code. Return True if the problem is solvable.
 
     Returns:
-        bool, optional: True if the TPTP problem is refutation and False if it is satisfiable. None if unknown.
+        the running time in seconds if the problem is solvable.
+        None if unknown.
     '''
-    from subprocess import Popen, PIPE
 
     with Popen([vampire], stdin=PIPE, stdout=PIPE, stderr=PIPE, text=True) as proc:
-        stdout, stderr = proc.communicate(code)
-        # # for debugging
-        # print("--------------------CODE----------------------")
-        # print(code)
-        # print("--------------------STDOUT----------------------")
-        # print(stdout)
-        # print("--------------------STDERR----------------------")
-        # print(stderr)
-        # print("--------------------END----------------------")
+        start_time = time.time()
+        try:
+            stdout, stderr = proc.communicate(code, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            return VampireResult(timeout, False, True)
+        end_time = time.time()
+
+    elapsed_time = end_time - start_time
+
+    # # for debugging
+    # print("--------------------CODE----------------------")
+    # print(code)
+    # print("--------------------STDOUT----------------------")
+    # print(stdout)
+    # print("--------------------STDERR----------------------")
+    # print(stderr)
+    # print("--------------------END----------------------")
 
     if stderr:
         raise ValueError(f'Error when invoking Vampire: {stderr}')
     
     if 'Refutation found' in stdout:
-        return True
+        return VampireResult(elapsed_time, True, False)
     elif 'Termination reason: Satisfiable' in stdout:
-        return False
+        return VampireResult(elapsed_time, False, False)
     else:
-        return None
+        raise ValueError(f'Unknown output from Vampire: {stdout}')
 
-def vampire_solve(vampire: str|Path, A: list[Term], B: Term) -> Optional[bool]:
+def vampire_solve(vampire: str|Path, A: list[Term], B: Term, timeout : float = 1) -> VampireResult:
     '''
     A and B are equations.
     Solve the implication problem A -> B using Vampire.
+    Return the running time in seconds if the problem is solvable.
     '''
     code = problem_to_tptp(A, B)
-    return invoke_vampire(vampire, code)
+    return invoke_vampire(vampire, code, timeout)
 
 
 

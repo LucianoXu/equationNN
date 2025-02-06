@@ -1,3 +1,136 @@
+# rl training for higher interestingness
+
+from pyualg import Term
+from model import *
+from scenario import RULE_NAMES_INV, parser, signature, forbidden_heads
+import multiprocessing as mp
+
+from evaluation import _test_intere
+
+import json
+
+device = json.load(open('config.json'))['backend']
+
+class GenEnv:
+    error_reward = -20.
+    def __init__(self, problem : Term, timeout = 10.):
+        self.problem = problem
+        
+        # note that the reward is the difference between the interestingness of the current equation and the last equation. starting from 0.
+        self.last_interestingness = 0.
+
+        self.timeout = timeout
+
+    @property
+    def state(self) -> str:
+        return self.problem.sig_str(signature) + " : "
+
+    def step(self, action: str) -> float:
+
+        # parse the action
+        encoding = tok_encode(action)
+
+        # try to apply the command. any exception will be caught and return
+        try:
+            # find the rule in RULE_NAME_INV
+            if id2token[encoding[0]] not in RULE_NAMES_INV:
+                return self.error_reward
+            
+            rule = RULE_NAMES_INV[id2token[encoding[0]]]
+
+            # find the first token2id['{'] element in encoding
+            subst_start_id = encoding.index(token2id['{'])
+
+            
+            pos = tuple(int(id2token[id]) for id in encoding[1:subst_start_id])
+
+            subst = parser.parse_subst(tok_decode(encoding[subst_start_id:]))
+
+            res = self.problem.apply_at(rule, signature, pos, subst, forbidden_heads)
+
+        except Exception as e:
+            # print(f"An error of type {type(e)} occurred: {e}")
+            return self.error_reward
+
+        # if the command is not applicable, return
+        if res is None:
+            return self.error_reward
+        
+        # if the command is applicable, conduct the command
+        self.problem = res[0]
+
+        # test the interestingness of the current equation
+        interestingness = _test_intere((self.problem, self.timeout))
+
+        # calculate the reward
+        reward = interestingness - self.last_interestingness
+        self.last_interestingness = interestingness
+        return reward
+    
+
+def process_env(i, shared_envs, action):
+    '''
+    helping function for parallel processing
+    '''
+    env = shared_envs[i]
+    reward = env.step(action)
+    shared_envs[i] = env
+    return i, reward
+
+def gen_example_group(model, batch_size: int = 10, step_limit: int = 20, context_length: int = 256, T: float = 1.0) -> list[list[tuple[str, torch.Tensor, float]]]:
+    '''
+    Generate a group of example traces.
+
+    Args:
+        batch_size: the number of examples to generate.
+        step_limit: the maximum number of steps for each example.
+
+    Returns:
+        A list of traces. Each trace is a list of tuples (action, log probability, reward).
+        Notice that an action is a complete response from the agent, not a single token.
+    '''
+    
+    envs = [GenEnv(Term("=", (Term("x"), Term("x")))) for _ in range(batch_size)]
+
+    # proceed the examples
+    traces: list[list[tuple[str, torch.Tensor, float]]] = [[] for _ in range(batch_size)]
+
+    remaining_number = len(envs)
+    progress_bar = tqdm(total=step_limit)
+
+    with mp.Manager() as manager:
+        shared_envs = manager.list(envs)
+
+        with mp.Pool(mp.cpu_count()) as pool:
+            for _ in range(step_limit):
+                # update the description of the progress bar
+                progress_bar.desc = f"Generating in Envs({remaining_number}/{batch_size})"
+
+                # generate the batch
+                batch = [env.state for env in shared_envs]
+                actions, log_probs = batch_generation(model, batch, context_length, T)
+
+                remaining_number = 0
+
+                print("Processing envs...", end="", flush=True)
+                # multiprocess version
+                reward_results = pool.starmap(process_env, [(i, shared_envs, actions[i]) for i in range(len(shared_envs))])
+
+                # single thread version
+                # reward_results = []
+                # for i in range(len(envs)):
+                #     reward_results.append((i, envs[i].step(actions[i])))
+                print("Done.", flush=True)
+
+                for i, reward in reward_results:
+                    traces[i].append((actions[i], log_probs[i], reward))
+                    remaining_number += 1
+
+                progress_bar.update(1)
+
+    return traces
+
+    
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard.writer import SummaryWriter
@@ -6,11 +139,7 @@ from tqdm import tqdm
 from typing import Optional
 from elab import ELab, set_adamw_params, get_grad_norm
 
-from data import full_path_examples, ExampleDataset, get_collate_fn
-from model import ModelArgs, Llama3
-from tokenizer import token2id
-from proofkernel import solve_kernel_group
-from small_args import SmallArgs
+from model import ModelArgs, Llama3, token2id, SmallArgs
 
 def rl_train(
         model: Llama3,
@@ -32,10 +161,9 @@ def rl_train(
         batch_size: int = 10, 
         accumulaton_step: int = 10,
         save_interval: Optional[int] = 10,
+        logging: bool = True,
 
         # reinforcement learning settings
-        max_step: int = 3, 
-        max_height: int = 3,
         rl_step_limit: int = 20,
         rl_temperature: float = 0.6,):
 
@@ -88,11 +216,8 @@ def rl_train(
             try:
                 for _ in range(accumulaton_step):
                     # STEP 1: sample the traces
-                    # generate starting terms
-                    examples = full_path_examples(batch_size, max_step, max_height)
-
-                    # get the traces
-                    traces = solve_kernel_group(model, list(examples), rl_step_limit, context_length, rl_temperature)
+                    # generate the example traces
+                    traces = gen_example_group(model, batch_size, rl_step_limit, context_length, rl_temperature)
                     ###########################
 
                     # STEP 2: calculate the pseudo loss
@@ -146,15 +271,16 @@ def rl_train(
 
                 # Logging
                 print(f"{ckpt_folder}\tStep {t}\tPseudo Loss: {avg_pseudo_loss:.3f}\tAvg Reward: {avg_reward:.3f}\tRaw Grad Norm: {raw_grad_norm:.3f}")
-                writer.add_scalar("pseudo_loss", avg_pseudo_loss, t)
-                writer.add_scalar("avg reward", avg_reward, t)
-                writer.add_scalar("raw grad norm", raw_grad_norm, t)
+                if logging:
+                    writer.add_scalar("pseudo_loss", avg_pseudo_loss, t)
+                    writer.add_scalar("avg reward", avg_reward, t)
+                    writer.add_scalar("raw grad norm", raw_grad_norm, t)
 
                 t += 1
 
                 if save_interval is not None and t % save_interval == 0:
                     lab.states['t'] = t
-                    lab.save(f"RL-{max_step}-{t}")
+                    lab.save(f"RL-{t}")
 
                 step += 1
             
@@ -172,35 +298,32 @@ def rl_train(
     finally:
         if save_interval is not None:
             lab.states['t'] = t
-            lab.save(f"RL-{max_step}-{t}")
+            lab.save(f"RL-{t}")
 
     print("Training completed and model saved.")
 
 if __name__ == '__main__':
-    from small_args import SmallArgs
     args = SmallArgs()
-    for i in range(5, 10):
-        rl_train(
-            Llama3(
-                model_args = args,
-                device='cuda'
-            ),
-            context_length = args.context_length,
+    rl_train(
+        Llama3(
+            model_args = args,
+            device=device
+        ),
+        context_length = args.context_length,
 
-            ckpt_folder = "./ckpt/Eq73",
-            input_version_name = 'latest',
+        ckpt_folder = "./ckpt/OMLgen",
+        input_version_name = '791',
 
-            lr = 2e-5,
-            weight_decay=0.01,
-            betas=(0.9, 0.99),
-            grad_norm_clip=1.0,
+        lr = 2e-5,
+        weight_decay=0.01,
+        betas=(0.9, 0.99),
+        grad_norm_clip=1.0,
 
-            num_steps = 400,
-            batch_size = 4,
-            accumulaton_step = 30,
-            rl_step_limit=30,
-            rl_temperature=0.6,
-            max_step=i,
+        num_steps = 400,
+        batch_size = 6,
+        accumulaton_step = 15,
+        rl_step_limit=10,
+        rl_temperature=0.6,
 
-            save_interval=10000
-        )
+        save_interval=10000
+    )

@@ -1,5 +1,17 @@
-from scenario import gen_example
+from model import SmallArgs, Llama3, batch_generation
+import json
+from elab import ELab
+
+device = json.load(open('config.json'))['backend']
 
 if __name__ == '__main__':
-    path = gen_example(6, 3)
-    print(path)
+    args = SmallArgs()
+    model = Llama3(args, device=device)
+    ELab('ckpt/OMLgen', version_name='latest', model=model)
+
+    beams = [" (x = x) :"] * 10
+
+    res, _ = batch_generation(model, beams, 256, 0.5)
+
+    for i in range(len(res)):
+        print(f"Beam {i}: {res[i]}")

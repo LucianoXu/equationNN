@@ -1,5 +1,5 @@
-from tokenizer import *
-from model import *
+from .tokenizer import *
+from .model import *
 
 PADDING_ID = token2id['<PAD>']
 EOS_ID = token2id['<EOS>']
@@ -102,11 +102,12 @@ def batch_generation(model, beams: list[str], context_length: int = 256, T: floa
         # iterate through the current beams
         for i in range(len(indices)):
             idx = indices[i]
+
             # update the log probabilities
             log_probs[idx] += predict_probabilities[i]
 
             # finish the beams that predict <EOS>
-            if next_tokens[i] == EOS_ID:
+            if next_tokens[i] == EOS_ID or len(input_ids[idx]) + 1 == context_length:
                 outputs[idx] = tok_decode(input_ids[idx][input_lens[idx]:])
                 del input_ids[idx]
 
@@ -119,24 +120,4 @@ def batch_generation(model, beams: list[str], context_length: int = 256, T: floa
 
 if __name__ == "__main__":
     pass
-    # from scenario import parser
-    # code1 = '((x * x) = (x * (x * x))) :'
-    # code2 = '((x * (x * y)) = (x * (y * x))) :'
-    # code3 = '((x * x) = (x * (x * (x * x)))) :'
-
-    # model_checkpint = 'trained_parameters.pth'
-
-    # # load the model
-    # device = 'mps'
-    # SEQ_LEN = 96
-
-    # model_args = ModelArgs()
-    # model_args.max_seq_len = SEQ_LEN
-    # model = Transformer(ModelArgs(), device)
-    # model.load_state_dict(torch.load(model_checkpint, weights_only=True, map_location=device))
-
-
-    # print(batch_generation(model, [code1, code2, code3], 0.3))
-
-    
     

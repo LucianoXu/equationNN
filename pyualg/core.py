@@ -124,6 +124,13 @@ class Term:
         '''
         return random.choice(list(self.all_nodes()))
     
+    @property
+    def size(self) -> int:
+        '''
+        Return the size of the term
+        '''
+        return 1 + sum([arg.size for arg in self.args])
+    
     def apply_at(self, opt: TermOpt, sig: Signature, pos: tuple[int, ...] = (), given_subst: Optional[Subst] = None, forbiden_heads: Optional[set[str]] = None) -> Optional[tuple[Term, Subst]]:
         '''
         Apply the function opt to the term at the specified position.
@@ -389,7 +396,7 @@ class TRS:
         return None
 
 
-
+# signature, term, given_subst, forbiden_heads
 TermOpt = Callable[[Signature, Term, Optional[Subst], Optional[set[str]]], Optional[tuple[Term, Subst]]]
 
 __all__ = ['RESERVED_TOKENS', 'Property', 'Signature', 'Term', 'unique', 'Subst', 'MatchingProblem', 'RewriteRule',
