@@ -29,7 +29,7 @@ def intere_fun(vampire_res: VampireResult, size: int) -> float:
     Compute the interestingness of a problem.
     '''
     # return log((vampire_res.elapsed_time + 0.001) / size)
-    return log(vampire_res.generated_clauses / size)
+    return log(vampire_res.generated_clauses)
 
 def _test_intere(args: tuple[Term, float]) -> float:
     '''

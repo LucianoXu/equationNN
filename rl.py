@@ -67,6 +67,29 @@ class GenEnv:
         self.last_interestingness = interestingness
         return reward
     
+def test_env(model, step_limit, context_length, temperature) -> str:
+
+    env = GenEnv(Term("=", (Term("x"), Term("x"))))
+    res : list[str] = []
+    total_reward = 0.
+
+    for _ in range(step_limit):
+        step_res = f"State: {env.state}\n"
+
+        # generate the batch
+        batch = [env.state]
+        actions, log_probs = batch_generation(model, batch, context_length, temperature)
+
+        reward = env.step(actions[0])
+
+        step_res += f"Action: {actions[0]}\n"
+        step_res += f"Reward: {reward}, Interestingness: {env.last_interestingness}\n"
+        print(step_res)
+        res.append(step_res)
+        total_reward += reward
+    
+    print(f"Total Reward: {total_reward}")
+    return "\n".join(res) + "Total Reward: " + str(total_reward)
 
 def process_env(i, shared_envs, action):
     '''
@@ -267,12 +290,18 @@ def rl_train(
                 optimizer.step()       # Update weights
                 optimizer.zero_grad()
 
-                # Logging
+                # output
                 print(f"{ckpt_folder}\tStep {t}\tPseudo Loss: {avg_pseudo_loss:.3f}\tAvg Reward: {avg_reward:.3f}\tRaw Grad Norm: {raw_grad_norm:.3f}")
+
+                # test generation result
+                gen_seq = test_env(model, rl_step_limit, context_length, rl_temperature)
+
+                # Logging
                 if logging:
                     writer.add_scalar("pseudo_loss", avg_pseudo_loss, t)
                     writer.add_scalar("avg reward", avg_reward, t)
                     writer.add_scalar("raw grad norm", raw_grad_norm, t)
+                    writer.add_text("generated sequence", gen_seq, t)
 
                 t += 1
 
@@ -309,8 +338,8 @@ if __name__ == '__main__':
         ),
         context_length = args.context_length,
 
-        ckpt_folder = "./ckpt/OMLgen",
-        input_version_name = '791',
+        ckpt_folder = "./ckpt/OMLgenBal",
+        input_version_name = '1565',
 
         lr = 2e-5,
         weight_decay=0.01,
@@ -318,8 +347,8 @@ if __name__ == '__main__':
         grad_norm_clip=1.0,
 
         num_steps = 400,
-        batch_size = 6,
-        accumulaton_step = 15,
+        batch_size = 4,
+        accumulaton_step = 25,
         rl_step_limit=10,
         rl_temperature=0.6,
 

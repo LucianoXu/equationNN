@@ -145,7 +145,7 @@ if __name__ == "__main__":
         ),
 
         context_length = args.context_length,
-        ckpt_folder='./ckpt/OMLgen',
+        ckpt_folder='./ckpt/OMLgenBal',
         load_version_name='none',
 
         lr = 2e-5,

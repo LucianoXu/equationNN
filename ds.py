@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from scenario import *
 import tqdm
-from gen import gen_example
+from gen import get_examples_balenced
 
 from scenario import signature
 from torch.utils.data import Dataset
@@ -53,27 +53,30 @@ class ExampleDataset(Dataset):
         progress_bar = tqdm.tqdm(range(num_examples), desc="Generating Process")
 
         while len(examples_set) < num_examples:
-            path = gen_example(self.max_step, self.max_height)
+            # plus 10% to avoid the case that some examples are too long
+            path_ls = get_examples_balenced(self.max_step, self.max_height, count = round(num_examples * 1.1) // self.max_step, progress_bar = False, ban_reverse=False)
 
-            for (term, opt, pos, _, given_subst) in path.path:
+            for path in path_ls:
 
-                # Synthesize and encode the prompt
-                prompt = term.sig_str(self.sig) + " : " + RULE_NAMES[opt]+ " " + " ".join(str(p) for p in pos) + " " + given_subst.sig_str(self.sig)
-                encoded_ids = tuple(tok_encode(prompt))
+                for (term, opt, pos, _, given_subst) in path.path:
 
-                input = (SOS_ID, ) + encoded_ids
-                label = encoded_ids + (EOS_ID, )
+                    # Synthesize and encode the prompt
+                    prompt = term.sig_str(self.sig) + " : " + RULE_NAMES[opt]+ " " + " ".join(str(p) for p in pos) + " " + given_subst.sig_str(self.sig)
+                    encoded_ids = tuple(tok_encode(prompt))
 
-                # Check the length
-                if len(input) > self.max_len:
-                    continue
+                    input = (SOS_ID, ) + encoded_ids
+                    label = encoded_ids + (EOS_ID, )
 
-                example = (prompt, input, label)
-                examples_set.add(example)
+                    # Check the length
+                    if len(input) > self.max_len:
+                        continue
 
-                progress_bar.update(1)
+                    example = (prompt, input, label)
+                    examples_set.add(example)
+
+                    progress_bar.update(1)
         
-        return list(examples_set)
+        return list(examples_set)[:num_examples]
 
     def _generate_examples_in_parallel(self) -> list[tuple[torch.Tensor, torch.Tensor]]:
         """
@@ -146,6 +149,7 @@ if __name__ == "__main__":
     dataset = ExampleDataset(20000, 8, 4)
     print(len(dataset))
     for i in range(20000):
-        print(dataset[i][0])
+        pass
+        # print(dataset[i][0])
         # if 'subst' in dataset[i][0]:
         #     input()
