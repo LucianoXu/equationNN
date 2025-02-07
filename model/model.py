@@ -2,6 +2,8 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed import init_process_group, destroy_process_group
 
 import torch
 import torch.nn.functional as F
@@ -300,19 +302,16 @@ class Llama3(nn.Module):
         self.vocab_size = model_args.vocab_size
         self.n_layers = model_args.n_layers
 
-        self.tok_embeddings = nn.Embedding(
-            model_args.vocab_size, model_args.dim, device=device
-        )
+        # Move model components to the initial device
+        self.device = torch.device(device)  # Store the device for the model
+        self.tok_embeddings = nn.Embedding(model_args.vocab_size, model_args.dim, device=device)
 
         self.layers = torch.nn.ModuleList()
-
         for layer_id in range(model_args.n_layers):
             self.layers.append(TransformerBlock(layer_id, model_args, device=device))
 
         self.norm = RMSNorm(model_args.dim, eps=model_args.norm_eps, device=device)
-        self.output = nn.Linear(
-            model_args.dim, model_args.vocab_size, bias=False, device=device
-        )
+        self.output = nn.Linear(model_args.dim, model_args.vocab_size, bias=False, device=device)
 
         freqs_cis = precompute_freqs_cis(
             dim=model_args.dim // model_args.n_heads,
@@ -321,21 +320,8 @@ class Llama3(nn.Module):
             device=device
         )
 
-        # register precomputed as buffer
+        # Register precomputed values as buffer
         self.register_buffer("freqs_cis", freqs_cis, persistent=False)
-
-    @property
-    def device(self):
-        return self.tok_embeddings.weight.device
-
-    @device.setter
-    def device(self, device):
-        self.tok_embeddings = self.tok_embeddings.to(device)
-        self.norm = self.norm.to(device)
-        self.output = self.output.to(device)
-        self.freqs_cis = self.freqs_cis.to(device)
-        for layer in self.layers:
-            layer = layer.to(device)
 
     def reset_parameters(self):
         self.tok_embeddings.reset_parameters()
@@ -343,7 +329,6 @@ class Llama3(nn.Module):
             layer.reset_parameters()
         self.norm.reset_parameters()
         self.output.reset_parameters()
-
 
     def forward(self, tokens: torch.Tensor, input_seq_len: Optional[torch.Tensor|list[int]] = None, front_pad_len: Optional[torch.Tensor|list[int]] = None):
         '''
@@ -353,14 +338,15 @@ class Llama3(nn.Module):
         # check sequence length
         assert tokens.shape[1] <= self.model_args.context_length, "sequence length exceeds context length"
         batch_size, seqlen = tokens.shape
-        h = self.tok_embeddings(tokens)
+
+        h = self.tok_embeddings(tokens)  # Embeddings layer
         freqs_cis = self.freqs_cis[:seqlen]
 
         mask = mask_calc(batch_size, seqlen, self.device, front_pad_lengths=front_pad_len, input_lengths=input_seq_len)
 
         for layer in self.layers:
             h = layer(h, freqs_cis, mask)
-            
+
         h = self.norm(h)
         output = self.output(h).float()
         return output

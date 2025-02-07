@@ -4,6 +4,16 @@ from pyualg import Term
 from model import *
 from scenario import RULE_NAMES_INV, parser, signature, forbidden_heads
 import multiprocessing as mp
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard.writer import SummaryWriter
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.optim.optimizer import Optimizer
+from torch.optim.adamw import AdamW
+from tqdm import tqdm
+import json
+import os
 
 from evaluation import _test_intere
 
@@ -12,7 +22,7 @@ import json
 device = json.load(open('config.json'))['backend']
 
 class GenEnv:
-    error_reward = -0.05
+    error_reward = -2.
     def __init__(self, problem : Term, timeout = 10.):
         self.problem = problem
         
@@ -162,8 +172,37 @@ from elab import ELab, set_adamw_params, get_grad_norm
 
 from model import ModelArgs, Llama3, token2id, SmallArgs
 
+
+
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
+    # initialize the process group
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
+def cleanup():
+    dist.barrier()
+    dist.destroy_process_group()
+
+
+def sync_model_parameters(model):
+    for param in model.parameters():
+        dist.all_reduce(param.data, op=dist.ReduceOp.SUM)
+        # Optionally divide by the world size to average
+        param.data /= dist.get_world_size()
+
+def sync_gradients(model):
+    for param in model.parameters():
+        if param.grad is not None:
+            dist.all_reduce(param.grad.data, op=dist.ReduceOp.SUM)
+            # Optionally divide by the world size to average gradients
+            param.grad.data /= dist.get_world_size()
+
 def rl_train(
-        model: Llama3,
+        rank,
+        world_size,
+        model_args: ModelArgs,
         context_length: int,
 
         ckpt_folder: str,
@@ -187,10 +226,15 @@ def rl_train(
         # reinforcement learning settings
         rl_step_limit: int = 20,
         rl_temperature: float = 0.6,):
-
+    
+    print(f"--------Training on rank {rank}")
+    setup(rank, world_size)    
 
     # get device
-    device = next(model.parameters()).device
+    device = torch.device(f"cuda:{rank}")
+
+    model = Llama3(model_args = model_args, device = device)
+    model = DDP(model, device_ids = [rank])
 
     # Set up the optimizer
     optimizer = AdamW(
@@ -273,6 +317,11 @@ def rl_train(
                     # STEP 3: Backward pass and optimization
                     J.backward()        # Backward pass
 
+                # synchronize between processes
+                dist.all_reduce(total_pseudo_loss, op=dist.ReduceOp.SUM)
+                dist.all_reduce(total_SA_pair_count, op=dist.ReduceOp.SUM)
+
+
                 # for normalization reasons, the pseudo loss is calculated for each state-action pair
                 avg_pseudo_loss = total_pseudo_loss / total_SA_pair_count
 
@@ -290,6 +339,7 @@ def rl_train(
                 optimizer.step()       # Update weights
                 optimizer.zero_grad()
 
+
                 # output
                 print(f"{ckpt_folder}\tStep {t}\tPseudo Loss: {avg_pseudo_loss:.3f}\tAvg Reward: {avg_reward:.3f}\tRaw Grad Norm: {raw_grad_norm:.3f}")
 
@@ -297,7 +347,7 @@ def rl_train(
                 gen_seq = test_env(model, rl_step_limit, context_length, rl_temperature)
 
                 # Logging
-                if logging:
+                if logging and rank == 0:
                     writer.add_scalar("pseudo_loss", avg_pseudo_loss, t)
                     writer.add_scalar("avg reward", avg_reward, t)
                     writer.add_scalar("raw grad norm", raw_grad_norm, t)
@@ -323,31 +373,76 @@ def rl_train(
         print(f"An error of type {type(e)} occurred: {e}")
 
     finally:
-        if save_interval is not None:
+        if save_interval is not None and rank == 0:
             lab.states['t'] = t
+            # lab.model = model.module
             lab.save(f"RL-{t}")
 
     print("Training completed and model saved.")
 
-if __name__ == '__main__':
-    args = SmallArgs()
-    rl_train(
-        Llama3(
-            model_args = args,
-            device=device
+    cleanup()
+
+def run_rl_train(
+        world_size: int,
+        model_args: ModelArgs,
+        context_length: int,
+        ckpt_folder: str,
+        input_version_name: str,
+        lr: float,
+        weight_decay: float,
+        betas: tuple[float, float],
+        eps = 1e-8,
+        grad_norm_clip: Optional[float] = None,
+        num_steps: int = 200,
+        batch_size: int = 10,
+        accumulaton_step: int = 10,
+        save_interval: Optional[int] = 10,
+        logging: bool = True,
+        rl_step_limit: int = 20,
+        rl_temperature: float = 0.6,):    
+    
+    torch.multiprocessing.spawn(rl_train,
+        args=(
+            world_size,
+            model_args,
+            context_length,
+            ckpt_folder,
+            input_version_name,
+            lr,
+            weight_decay,
+            betas,
+            eps,
+            grad_norm_clip,
+            num_steps,
+            batch_size,
+            accumulaton_step,
+            save_interval,
+            logging,
+            rl_step_limit,
+            rl_temperature
         ),
+        nprocs=world_size,
+        join=True)
+
+
+
+if __name__ == '__main__':
+    args = MiddleArgs()
+    run_rl_train(
+        world_size=torch.cuda.device_count(),
+        model_args = args,
         context_length = args.context_length,
 
-        ckpt_folder = "./ckpt/OMLgenBal",
-        input_version_name = '1565',
+        ckpt_folder = "./ckpt/OMLgenL",
+        input_version_name = 'latest',
 
-        lr = 2e-5,
+        lr = 5e-6,
         weight_decay=0.01,
         betas=(0.9, 0.99),
         grad_norm_clip=1.0,
 
         num_steps = 400,
-        batch_size = 4,
+        batch_size = 1,
         accumulaton_step = 25,
         rl_step_limit=10,
         rl_temperature=0.6,

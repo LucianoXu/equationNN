@@ -1,4 +1,4 @@
-from model import SmallArgs, Llama3, batch_generation, tok_decode
+from model import SmallArgs, MiddleArgs, Llama3, batch_generation, tok_decode
 import json
 from elab import ELab
 from model.tokenizer import tok_encode
@@ -46,9 +46,9 @@ def eval_model_avg_intere(model: Llama3, max_step: int, context_length: int, T: 
 
 
 if __name__ == '__main__':
-    args = SmallArgs()
+    args = MiddleArgs()
     model = Llama3(args, device=device)
-    ELab('ckpt/OMLgenBal', version_name='1565', model=model)
+    ELab('ckpt/OMLgenL', version_name='latest', model=model)
 
     # test_env(model, 10, 256, 0.6)
 

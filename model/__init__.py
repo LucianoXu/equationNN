@@ -1,4 +1,4 @@
 from .model import *
 from .tokenizer import *
-from .small_args import SmallArgs
+from .args import SmallArgs, MiddleArgs
 from .generate import *

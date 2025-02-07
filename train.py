@@ -3,12 +3,16 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard.writer import SummaryWriter
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.optimizer import Optimizer
 from torch.optim.adamw import AdamW
 from tqdm import tqdm
 import json
+import os
 
-from model import token2id, ModelArgs, Llama3, SmallArgs
+from model import token2id, ModelArgs, Llama3, SmallArgs, MiddleArgs
 
 from ds import ExampleDataset, get_collate_fn
 
@@ -16,8 +20,22 @@ from elab import ELab, get_grad_norm
 
 device = json.load(open('config.json'))['backend']
 
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
+    # initialize the process group
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
+def cleanup():
+    dist.barrier()
+    dist.destroy_process_group()
+
+
 def train(
-        model: Llama3,
+        rank,
+        world_size,
+        model_args: ModelArgs,
         context_length: int,
         ckpt_folder: str, 
         load_version_name: str|Literal['latest', 'none'],
@@ -37,10 +55,14 @@ def train(
 
         save_interval: int = 1000,
         ):
-    
 
-    # get device
-    device = next(model.parameters()).device
+    print(f"--------Training on rank {rank}")
+    setup(rank, world_size)    
+
+    device = torch.device(f"cuda:{rank}")
+
+    model = Llama3(model_args = model_args, device = device)
+    model = DDP(model, device_ids = [rank])
 
     # build optimizer
     optimizer = AdamW(
@@ -79,7 +101,7 @@ def train(
 
             # generate training data
             dataset = ExampleDataset(epoch_data_length, max_step, max_height, context_length)
-            train_dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=get_collate_fn(str(device)))
+            train_dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=get_collate_fn(str(device)), shuffle=False, sampler=DistributedSampler(dataset))
 
             
             # Use tqdm for progress bar
@@ -120,8 +142,9 @@ def train(
 
                 t += 1
 
-                if t % save_interval == 0:
+                if t % save_interval == 0 and rank == 0:
                     lab.states['t'] = t
+                    # lab.model = model.module
                     lab.save(version_name=str(t))
 
     except KeyboardInterrupt:
@@ -132,20 +155,68 @@ def train(
 
     finally:
         lab.states['t'] = t
-        lab.save(version_name=str(t))
+        if rank == 0:
+            # lab.model = model.module
+            lab.save(version_name=str(t))
+
+        cleanup()
 
     print("Training completed and model saved.")
 
-if __name__ == "__main__":
-    args = SmallArgs()
-    train(
-        Llama3(
-            model_args = args,
-            device=device
-        ),
+def run_train(
+        world_size: int,
+        model_args: ModelArgs,
+        context_length: int,
+        ckpt_folder: str, 
+        load_version_name: str|Literal['latest', 'none'],
 
+        # optimizer
+        lr: float,
+        weight_decay: float, 
+        betas: tuple[float, float], 
+        eps = 1e-8,
+        grad_norm_clip: Optional[float] = None,
+
+        num_epochs: int = 10, 
+        epoch_data_length: int = 100000, 
+        batch_size: int = 32, 
+        max_step: int = 6, 
+        max_height: int = 3,
+
+        save_interval: int = 1000,
+        ):
+    torch.multiprocessing.spawn(train, 
+        args=(
+            world_size,
+            model_args,
+            context_length,
+            ckpt_folder, 
+            load_version_name,
+
+            # optimizer
+            lr,
+            weight_decay, 
+            betas, 
+            eps,
+            grad_norm_clip,
+
+            num_epochs, 
+            epoch_data_length, 
+            batch_size, 
+            max_step, 
+            max_height,
+
+            save_interval,
+        ), nprocs=world_size, join=True)
+
+if __name__ == "__main__":
+    args = MiddleArgs()
+    run_train(
+        world_size=torch.cuda.device_count(),
+
+        model_args = args,
         context_length = args.context_length,
-        ckpt_folder='./ckpt/OMLgenBal',
+        ckpt_folder='./ckpt/OMLgenL',
         load_version_name='none',
 
         lr = 2e-5,
@@ -156,7 +227,7 @@ if __name__ == "__main__":
 
         num_epochs = 10, 
         epoch_data_length = 100000, 
-        batch_size = 128, 
+        batch_size = 64, 
         max_step = 6, 
         max_height = 3,
 
