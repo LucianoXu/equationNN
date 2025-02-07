@@ -1,6 +1,7 @@
 # transform the implication problem to TPTP format and solve it using Vampire
 
 from dataclasses import dataclass
+from enum import Enum
 import subprocess
 from typing import Optional
 from pyualg import Term, Signature
@@ -8,6 +9,7 @@ from scenario import signature, parser
 from pathlib import Path
 import time
 from subprocess import Popen, PIPE
+import re
 
 
 def magma_to_tptp(t: Term) -> str:
@@ -59,8 +61,11 @@ class VampireResult:
     The result of invoking Vampire.
     '''
     elapsed_time: float
-    is_provable: bool
-    timeout: bool
+    generated_clauses: int
+    is_true: Optional[bool] = None  # use None to represent unknown/timeout
+
+generated_clauses_re = re.compile(r'Generated clauses: (\d+)')
+time_elapsed_re = re.compile(r'Time elapsed: ([\d.]+) s')
 
 def invoke_vampire(vampire: str|Path, code: str, timeout : float = 10) -> VampireResult:
     '''
@@ -71,16 +76,34 @@ def invoke_vampire(vampire: str|Path, code: str, timeout : float = 10) -> Vampir
         None if unknown.
     '''
 
-    with Popen([vampire], stdin=PIPE, stdout=PIPE, stderr=PIPE, text=True) as proc:
-        start_time = time.time()
-        try:
-            stdout, stderr = proc.communicate(code, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            return VampireResult(timeout, False, True)
-        end_time = time.time()
+    with Popen([vampire, "--statistics", "full", "-t", f"{timeout}s"], stdin=PIPE, stdout=PIPE, stderr=PIPE, text=True) as proc:
+        stdout, stderr = proc.communicate(code)
+    
+    if stderr:
+        raise ValueError(f'Error when invoking Vampire: {stderr}')
 
-    elapsed_time = end_time - start_time
+
+    # search for "Generated clauses: ..." in stdout using regex
+    match = generated_clauses_re.search(stdout)
+    if match:
+        generated_clauses = int(match.group(1))
+    else:
+        raise ValueError(f'Cannot find the number of generated clauses in the output of Vampire: {stdout}')
+
+    # search for "Time elapsed: ... s" in stdout using regex
+    match = time_elapsed_re.search(stdout)
+    if match:
+        elapsed_time = float(match.group(1))
+    else:
+        raise ValueError(f'Cannot find the running time in the output of Vampire: {stdout}')
+
+    # decide whether the problem is solvable or timeout
+    if "Refutation found" in stdout:
+        is_true = True
+    elif "Time limit reached!" in stdout:
+        is_true = None
+    else:
+        is_true = False
 
     # # for debugging
     # print("--------------------CODE----------------------")
@@ -91,15 +114,7 @@ def invoke_vampire(vampire: str|Path, code: str, timeout : float = 10) -> Vampir
     # print(stderr)
     # print("--------------------END----------------------")
 
-    if stderr:
-        raise ValueError(f'Error when invoking Vampire: {stderr}')
-    
-    if 'Refutation found' in stdout:
-        return VampireResult(elapsed_time, True, False)
-    elif 'Termination reason: Satisfiable' in stdout:
-        return VampireResult(elapsed_time, False, False)
-    else:
-        raise ValueError(f'Unknown output from Vampire: {stdout}')
+    return VampireResult(elapsed_time, generated_clauses, is_true)
 
 def vampire_solve(vampire: str|Path, A: list[Term], B: Term, timeout : float = 1) -> VampireResult:
     '''

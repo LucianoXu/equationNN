@@ -12,7 +12,7 @@ import json
 device = json.load(open('config.json'))['backend']
 
 class GenEnv:
-    error_reward = -20.
+    error_reward = -0.05
     def __init__(self, problem : Term, timeout = 10.):
         self.problem = problem
         
@@ -112,7 +112,6 @@ def gen_example_group(model, batch_size: int = 10, step_limit: int = 20, context
 
                 remaining_number = 0
 
-                print("Processing envs...", end="", flush=True)
                 # multiprocess version
                 reward_results = pool.starmap(process_env, [(i, shared_envs, actions[i]) for i in range(len(shared_envs))])
 
@@ -120,7 +119,6 @@ def gen_example_group(model, batch_size: int = 10, step_limit: int = 20, context
                 # reward_results = []
                 # for i in range(len(envs)):
                 #     reward_results.append((i, envs[i].step(actions[i])))
-                print("Done.", flush=True)
 
                 for i, reward in reward_results:
                     traces[i].append((actions[i], log_probs[i], reward))
