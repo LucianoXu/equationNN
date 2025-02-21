@@ -38,6 +38,46 @@ namespace ualg{
     using TermPos = std::vector<unsigned int>;
     using TermPtr = std::shared_ptr<const Term>;
 
+    class Signature {
+    public:
+        struct func_symbol {
+            std::string name;
+            unsigned arity;
+        };
+    private:
+        std::vector<func_symbol> init_func_symbols;
+        std::map<std::string, func_symbol> func_symbols;
+
+        std::vector<std::string> init_variables;
+        std::set<std::string> variables;
+
+    public:
+        Signature(
+            const std::vector<func_symbol>& _func_symbols,
+            const std::vector<std::string>& _variables) : 
+            init_func_symbols(_func_symbols), init_variables(_variables) {
+
+            for (const auto& func : _func_symbols) {
+                func_symbols[func.name] = func;
+            }
+
+            for (const auto& var : _variables) {
+                this->variables.insert(var);
+            }
+        }
+
+        Signature() = default;
+
+        const std::set<std::string>& get_variables() const {
+            return variables;
+        }
+
+        std::string to_string() const;
+
+        bool term_valid(TermPtr term) const;
+    };
+
+
     class Term : public std::enable_shared_from_this<Term> {
     protected:
         std::string head;
@@ -60,6 +100,8 @@ namespace ualg{
 
         std::string to_string() const;
 
+        std::set<std::string> get_variables(const Signature& sig) const;
+
         TermPtr get_subterm(const TermPos& pos) const;
 
         /**
@@ -74,28 +116,115 @@ namespace ualg{
         TermPtr replace_at(const TermPos& pos, TermPtr new_subterm) const;
     };
 
+
     class Algebra {
-    public:
-        struct func_symbol {
-            std::string name;
-            unsigned arity;
-        };
 
     private:
-        std::vector<func_symbol> func_symbols;
-        std::vector<std::string> variables;
-        std::vector<std::tuple<std::string, TermPtr, TermPtr>> axioms;
+        Signature sig;
+        std::vector<std::tuple<std::string, TermPtr, TermPtr>> init_axioms;
 
     public:
-        Algebra(        
-            std::vector<func_symbol> _func_symbols,
-            std::vector<std::string> variables,
-            std::vector<std::tuple<std::string, TermPtr, TermPtr>> axioms) :
-            func_symbols(_func_symbols), variables(variables), axioms(axioms) {}
+        Algebra(
+            const Signature& sig,
+            const std::vector<std::tuple<std::string, TermPtr, TermPtr>>& axioms) :
+            sig(sig), init_axioms(axioms) {
+
+            // check whether the axioms are valid in the signature
+            for (const auto& axiom : axioms) {
+                auto [name, lhs, rhs] = axiom;
+                if (!sig.term_valid(lhs) || !sig.term_valid(rhs)) {
+                    throw std::runtime_error("Invalid axiom: " + name + ": " + lhs->to_string() + " = " + rhs->to_string());
+                }
+            }
+        }
 
         Algebra() = default;
 
         std::string to_string() const;
+
+        const Signature& get_signature() const {
+            return sig;
+        }
+    };
+
+
+    /**
+     * @brief A substitution is a map from variable names to terms.
+     * 
+     */
+    using subst = std::map<std::string, TermPtr>;
+
+    std::string to_string(const subst& s);
+
+    bool subst_eq(const subst& s1, const subst& s2);
+
+    TermPtr apply_subst(TermPtr term, const subst& s);
+
+    /**
+     * @brief The function tries to match the given term with the specified pattern, variables and substitution.
+     * 
+     * @param term 
+     * @param pattern 
+     * @param vars
+     * @param given_subst 
+     * @return std::optional<subst> 
+     */
+    std::optional<subst> match(TermPtr term, TermPtr pattern, const std::set<std::string>& vars, const subst& spec_subst);
+
+    /**
+     * @brief Match a term with the pattern, using the given signature and substitutions. The validity of the term is *NOT* checked.
+     * 
+     * @param term 
+     * @param pattern 
+     * @param sig 
+     * @param spec_subst 
+     * @return std::optional<subst> 
+     */
+    std::optional<subst> match(TermPtr term, TermPtr pattern, const Signature& sig, const subst& spec_subst);
+
+    class RewriteRule {
+    private:
+        TermPtr lhs;
+        TermPtr rhs;
+        std::shared_ptr<Signature> p_sig;
+
+        // the set of variables that must be include in the spec_subst
+        std::set<std::string> required_subst_vars;
+
+    public:
+        RewriteRule(TermPtr _lhs, TermPtr _rhs, const Signature& sig) : lhs(_lhs), rhs(_rhs) {
+            p_sig = std::make_shared<Signature>(sig);
+
+            // check whether the lhs and rhs are valid in the signature
+            if (!sig.term_valid(lhs) || !sig.term_valid(rhs)) {
+                throw std::runtime_error("Invalid rewrite rule: " + lhs->to_string() + " -> " + rhs->to_string());
+            }
+
+            // Calculate the required variables for the substitution
+            auto lhs_vars = lhs->get_variables(*p_sig);
+            auto rhs_vars = rhs->get_variables(*p_sig);
+            for (const auto& var : rhs_vars) {
+                if (lhs_vars.find(var) == lhs_vars.end()) {
+                    required_subst_vars.insert(var);
+                }
+            }
+        }
+        RewriteRule() = default;
+
+        const std::set<std::string>& get_required_subst_vars() const {
+            return required_subst_vars;
+        }
+
+        std::string to_string() const;
+
+        /**
+         * @brief Apply the rewrite rule to the term with the specified substitution.
+         * 
+         * @param term 
+         * @param spec_subst 
+         * @return std::optional<TermPtr> 
+         */
+        std::optional<TermPtr> apply(TermPtr term, const subst& spec_subst) const;
     };
 
 }   // namespace ualg

@@ -9,9 +9,19 @@ namespace ualg {
     
         TermPtr get_root();
 
+        subst get_subst();
+
+        Signature get_signature();
+
         Algebra get_algebra();
 
         void exitAlg(ENVBACKENDParser::AlgContext *ctx) override;
+
+        void exitSig(ENVBACKENDParser::SigContext *ctx) override;
+
+        void exitEmptySubst(ENVBACKENDParser::EmptySubstContext *ctx) override;
+
+        void exitNonEmptySubst(ENVBACKENDParser::NonEmptySubstContext *ctx) override;
     
         // Called when entering a 'Identifier' node
         void exitIdentifier(ENVBACKENDParser::IdentifierContext *ctx) override;
@@ -32,11 +42,13 @@ namespace ualg {
     private:
         std::stack<std::string> funcnames;
         std::stack<TermPtr> term_stack;
+        std::stack<subst> subst_stack;
 
         // the stack for the algebra specification
-        std::vector<Algebra::func_symbol> functions;
+        std::vector<Signature::func_symbol> functions;
         std::vector<std::string> variables;
         std::vector<std::tuple<std::string, TermPtr, TermPtr>> axioms;
+        Signature sig;
         Algebra algebra;
     };
     
@@ -49,16 +61,44 @@ namespace ualg {
         throw std::runtime_error("No root node found.");
     }
 
+    subst ENVBACKENDTermBuilder::get_subst() {
+        return subst_stack.top();
+    }
+
+    Signature ENVBACKENDTermBuilder::get_signature() {
+        return sig;
+    }
+
     Algebra ENVBACKENDTermBuilder::get_algebra() {
         return algebra;
     }
 
     void ENVBACKENDTermBuilder::exitAlg(ENVBACKENDParser::AlgContext *ctx) {
+
+        algebra = Algebra(sig, axioms);
+    }
+
+    void ENVBACKENDTermBuilder::exitSig(ENVBACKENDParser::SigContext *ctx) {
         for (auto name : ctx->NAME()) {
             variables.push_back(name->getText());
         }
 
-        algebra = Algebra(functions, variables, axioms);
+        sig = Signature(functions, variables);
+    }
+
+
+    void ENVBACKENDTermBuilder::exitEmptySubst(ENVBACKENDParser::EmptySubstContext *ctx) {
+        subst_stack.push({});
+    }
+
+    void ENVBACKENDTermBuilder::exitNonEmptySubst(ENVBACKENDParser::NonEmptySubstContext *ctx) {
+        subst subst_data = {};
+        for (int i = ctx->NAME().size() - 1; i >= 0; --i) {
+            std::string var_name = ctx->NAME(i)->getText();
+            subst_data[var_name] = term_stack.top();
+            term_stack.pop();
+        }
+        subst_stack.push(subst_data);
     }
     
     void ENVBACKENDTermBuilder::exitIdentifier(ENVBACKENDParser::IdentifierContext *ctx) {
@@ -127,6 +167,56 @@ namespace ualg {
 
             // Retrieve the root of the custom tree
             return treeBuilder.get_root();            
+        } else {
+            return std::nullopt;
+        }
+    }
+
+    std::optional<subst> parse_subst(const std::string& code) {
+        using namespace antlr4;
+        
+        ANTLRInputStream input(code);
+        ENVBACKENDLexer lexer(&input);
+        CommonTokenStream tokens(&lexer);
+
+        tokens.fill();
+        
+        ENVBACKENDParser parser(&tokens);
+        tree::ParseTree *tree = parser.subst();
+
+        // Create the tree builder
+        ENVBACKENDTermBuilder treeBuilder;
+        // Check for errors
+        if (parser.getNumberOfSyntaxErrors() == 0) {
+            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
+
+            // Retrieve the root of the custom tree
+            return treeBuilder.get_subst();            
+        } else {
+            return std::nullopt;
+        }
+    }
+
+    std::optional<Signature> parse_signature(const std::string& code) {
+        using namespace antlr4;
+        
+        ANTLRInputStream input(code);
+        ENVBACKENDLexer lexer(&input);
+        CommonTokenStream tokens(&lexer);
+
+        tokens.fill();
+        
+        ENVBACKENDParser parser(&tokens);
+        tree::ParseTree *tree = parser.sig();
+
+        // Create the tree builder
+        ENVBACKENDTermBuilder treeBuilder;
+        // Check for errors
+        if (parser.getNumberOfSyntaxErrors() == 0) {
+            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
+
+            // Retrieve the root of the custom tree
+            return treeBuilder.get_signature();            
         } else {
             return std::nullopt;
         }

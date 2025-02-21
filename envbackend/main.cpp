@@ -7,24 +7,16 @@ using namespace std;
 using namespace ualg;
 
 int main() {
-    auto x = parse_term("f(x y)");
-    cout<<x.value()->to_string()<<endl;
 
-    auto alg = parse_alg(R"(
-        [function]
-        & : 2
-        | : 2
-        ~ : 1
-
-        [variable]
-        x y z u v w
-
-        [axiom]
-        (AX1) &(x y) = &(y x)
-        (AX2) &(x |(y z)) = |(&(x y) &(x z))
-
-    )").value();
-    cout << alg.to_string() << endl;
+    auto term = parse_term("f(x Y)").value();
+    auto pattern = parse_term("f(x y)").value();
+    
+    auto res = match(term, pattern, {"X", "Y"}, {});
+    if (res.has_value()) {
+        cout << to_string(res.value()) << endl;
+    } else {
+        cout<<"Not matched!"<<endl;
+    }
 
     cout<<"Hello World!"<<endl;
 }

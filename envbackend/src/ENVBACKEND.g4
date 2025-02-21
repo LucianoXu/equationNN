@@ -3,12 +3,20 @@ grammar ENVBACKEND;
 // Parser rules
 
 // Algebra
-alg : '[function]' func+ '[variable]' NAME+ '[axiom]' axiom+
+alg : sig '[axiom]' axiom+
+    ;
+
+// Signature
+sig : '[function]' func+ '[variable]' NAME+
     ;
 
 func : funcname ':' INT ;
 
 axiom : '(' NAME ')' expr '=' expr ;
+
+subst : '{' '}'                                         # EmptySubst
+      | '{' NAME ':' expr (',' NAME ':' expr)* '}'      # NonEmptySubst
+      ;
 
 expr :   funcname                         # Identifier
      |   funcname '(' expr+ ')'           # Application
