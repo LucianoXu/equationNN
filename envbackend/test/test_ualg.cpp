@@ -80,6 +80,17 @@ x y z u v w
     EXPECT_EQ(actual_res, expected_res);
 }
 
+TEST(TestAlg, term_get_all_subterms) {
+    auto term = parse_term("f(g(x y) x)").value();
+    auto res = term->get_all_subterms();
+    EXPECT_EQ(res.size(), 5);
+    EXPECT_EQ(res[0].first, TermPos());
+    EXPECT_EQ(res[1].first, TermPos({0}));
+    EXPECT_EQ(res[2].first, TermPos({0, 0}));
+    EXPECT_EQ(res[3].first, TermPos({0, 1}));
+    EXPECT_EQ(res[4].first, TermPos({1}));
+}
+
 TEST(TestAlg, signature_check) {
     Signature sig = parse_signature(R"(
         [function]
@@ -256,4 +267,48 @@ TEST(TestAlg, proof_action1) {
     auto res = kernel.action(eq, act);
     EXPECT_EQ(res, SUCCESS);
     EXPECT_EQ(*eq.lhs, *parse_term("|(y |(&(v u) u))").value());
+}
+
+TEST(TestAlg, next_token_machine1) {
+
+    Algebra alg = parse_alg(R"(
+        [function]
+        & : 2
+        | : 2
+        ~ : 1
+        zero : 0
+
+        [variable]
+        x y z u v w
+
+        [axiom]
+        (AX1) &(x y) = |(&(y x) z)
+        (AX2) &(x y) = |(z w)
+    )").value();
+
+    auto machine = NextTokenMachine(alg);
+
+    vector<string> seq = {"&", "(", "x", "y", ")", "=", "&", "(", "&", "(", "u", "u", ")", "y", ")", ":", "AX2_L2R", "(", "1", ")", "{", "w", ":", "|", "(", "zero", "zero", ")", ",", "z", ":", "&", "(", "u", "v", ")", "}", "<EOS>"};
+    
+    while (machine.get_state() != NextTokenMachine::HALT) {
+        cout << machine.to_string() << endl;
+
+        string token;
+
+        // use predefined sequence
+        if (seq.size() == 0) {
+            // input a string
+            break;
+        }
+        else {
+            token = seq[0];
+            seq.erase(seq.begin());
+        }
+        
+        if (!machine.push_token(token)) {
+            cout << "Invalid token." << endl;
+        }
+    }
+
+    EXPECT_EQ(machine.get_state(), NextTokenMachine::HALT);
 }

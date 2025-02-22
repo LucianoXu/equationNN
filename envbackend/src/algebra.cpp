@@ -183,6 +183,28 @@ namespace ualg {
         return make_shared<const Term>(this->head, std::move(new_args));
     }
 
+    void _get_all_subterms(TermPtr term, TermPos pos_prefix, vector<pair<TermPos, TermPtr>>& results) {
+        results.push_back({pos_prefix, term});
+
+        for (int i = 0; i < term->get_args().size(); i++) {
+            pos_prefix.push_back(i);
+            _get_all_subterms(term->get_args()[i], pos_prefix, results);
+            pos_prefix.pop_back();
+        }
+    }
+
+    /**
+     * @brief Get the all subterms object
+     * 
+     * @return std::vector<std::pair<TermPos, TermPtr>> 
+     */
+    vector<pair<TermPos, TermPtr>> Term::get_all_subterms() const {
+        vector<pair<TermPos, TermPtr>> results;
+        TermPos pos_prefix;
+        _get_all_subterms(this->shared_from_this(), pos_prefix, results);
+        return results;
+    }
+
 
     //////////////////////////////////////////////////////////////////
     // Algebra

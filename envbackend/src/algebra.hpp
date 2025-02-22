@@ -44,6 +44,7 @@ namespace ualg{
             std::string name;
             unsigned arity;
         };
+
     private:
         std::vector<func_symbol> init_func_symbols;
         std::map<std::string, func_symbol> func_symbols;
@@ -68,8 +69,16 @@ namespace ualg{
 
         Signature() = default;
 
+        const std::vector<func_symbol>& get_func_symbols() const {
+            return init_func_symbols;
+        }
+
         const std::set<std::string>& get_variables() const {
             return variables;
+        }
+
+        unsigned get_arity(const std::string& name) const {
+            return func_symbols.at(name).arity;
         }
 
         std::string to_string() const;
@@ -114,6 +123,13 @@ namespace ualg{
         TermPtr replace_term(TermPtr pattern, TermPtr replacement) const;
 
         TermPtr replace_at(const TermPos& pos, TermPtr new_subterm) const;
+
+        /**
+         * @brief Get the all subterms object
+         * 
+         * @return std::vector<std::pair<TermPos, TermPtr>> 
+         */
+        std::vector<std::pair<TermPos, TermPtr>> get_all_subterms() const;
     };
 
     struct equation {

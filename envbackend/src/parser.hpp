@@ -15,12 +15,19 @@
 #include "env.hpp"
 
 namespace ualg {
+    /**
+     * @brief Parse the given code.
+     * 
+     * @param code 
+     * @return std::optional<equation>
+     */
+    std::optional<equation> parse_equation(const std::string& code);
 
     /**
      * @brief Parse the given code.
      * 
      * @param code 
-     * @return TermPtr
+     * @return std::optional<TermPtr>
      */
     std::optional<TermPtr> parse_term(const std::string& code);
 

@@ -7,6 +7,8 @@ namespace ualg {
     public:
         ENVBACKENDTermBuilder();
     
+        equation get_equation();
+
         TermPtr get_term();
 
         TermPos get_pos();
@@ -72,6 +74,10 @@ namespace ualg {
     
     ENVBACKENDTermBuilder::ENVBACKENDTermBuilder() {}
     
+    equation ENVBACKENDTermBuilder::get_equation() {
+        return std::move(eq_stack.top());
+    }
+
     TermPtr ENVBACKENDTermBuilder::get_term() {
         if (!term_stack.empty()) {
             return std::move(term_stack.top());
@@ -80,11 +86,11 @@ namespace ualg {
     }
 
     TermPos ENVBACKENDTermBuilder::get_pos() {
-        return pos_stack.top();
+        return std::move(pos_stack.top());
     }
 
     subst ENVBACKENDTermBuilder::get_subst() {
-        return subst_stack.top();
+        return std::move(subst_stack.top());
     }
 
     Signature ENVBACKENDTermBuilder::get_signature() {
@@ -198,6 +204,31 @@ namespace ualg {
             pos.push_back(std::stoi(ctx->INT(i)->getText()));
         }
         pos_stack.push(pos);
+    }
+
+    std::optional<equation> parse_equation(const std::string& code) {
+        using namespace antlr4;
+        
+        ANTLRInputStream input(code);
+        ENVBACKENDLexer lexer(&input);
+        CommonTokenStream tokens(&lexer);
+
+        tokens.fill();
+        
+        ENVBACKENDParser parser(&tokens);
+        tree::ParseTree *tree = parser.equation();
+
+        // Create the tree builder
+        ENVBACKENDTermBuilder treeBuilder;
+        // Check for errors
+        if (parser.getNumberOfSyntaxErrors() == 0) {
+            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
+
+            // Retrieve the root of the custom tree
+            return treeBuilder.get_equation();            
+        } else {
+            return std::nullopt;
+        }
     }
 
     std::optional<TermPtr> parse_term(const std::string& code) {
