@@ -7,13 +7,23 @@ namespace ualg {
     public:
         ENVBACKENDTermBuilder();
     
-        TermPtr get_root();
+        TermPtr get_term();
+
+        TermPos get_pos();
 
         subst get_subst();
 
         Signature get_signature();
 
         Algebra get_algebra();
+
+        proof_step get_proof_step();
+
+        proof_action get_proof_action();
+
+        void exitProofstep(ENVBACKENDParser::ProofstepContext *ctx) override;
+
+        void exitProofaction(ENVBACKENDParser::ProofactionContext *ctx) override;
 
         void exitAlg(ENVBACKENDParser::AlgContext *ctx) override;
 
@@ -35,30 +45,42 @@ namespace ualg {
         // Called when entering a 'Axiom' node
         void exitAxiom(ENVBACKENDParser::AxiomContext *ctx) override;
 
+        void exitEquation(ENVBACKENDParser::EquationContext *ctx) override;
+
         void exitNameFunc(ENVBACKENDParser::NameFuncContext *ctx) override;
 
         void exitSymbolFunc(ENVBACKENDParser::SymbolFuncContext *ctx) override;
+
+        void exitPos(ENVBACKENDParser::PosContext *ctx) override;
     
     private:
         std::stack<std::string> funcnames;
         std::stack<TermPtr> term_stack;
+        std::stack<equation> eq_stack;
         std::stack<subst> subst_stack;
+        std::stack<TermPos> pos_stack;
 
         // the stack for the algebra specification
         std::vector<Signature::func_symbol> functions;
         std::vector<std::string> variables;
-        std::vector<std::tuple<std::string, TermPtr, TermPtr>> axioms;
+        std::vector<std::pair<std::string, equation>> axioms;
         Signature sig;
         Algebra algebra;
+        proof_action act;
+        proof_step step;
     };
     
     ENVBACKENDTermBuilder::ENVBACKENDTermBuilder() {}
     
-    TermPtr ENVBACKENDTermBuilder::get_root() {
+    TermPtr ENVBACKENDTermBuilder::get_term() {
         if (!term_stack.empty()) {
             return std::move(term_stack.top());
         }
         throw std::runtime_error("No root node found.");
+    }
+
+    TermPos ENVBACKENDTermBuilder::get_pos() {
+        return pos_stack.top();
     }
 
     subst ENVBACKENDTermBuilder::get_subst() {
@@ -71,6 +93,25 @@ namespace ualg {
 
     Algebra ENVBACKENDTermBuilder::get_algebra() {
         return algebra;
+    }
+
+    proof_action ENVBACKENDTermBuilder::get_proof_action() {
+        return act;
+    }
+
+    proof_step ENVBACKENDTermBuilder::get_proof_step() {
+        return step;
+    }
+
+    void ENVBACKENDTermBuilder::exitProofaction(ENVBACKENDParser::ProofactionContext *ctx) {
+        act = {ctx->NAME()->getText(), pos_stack.top(), subst_stack.top()};
+        pos_stack.pop();
+        subst_stack.pop();
+    }
+
+    void ENVBACKENDTermBuilder::exitProofstep(ENVBACKENDParser::ProofstepContext *ctx) {
+        step = {eq_stack.top(), act};
+        eq_stack.pop();
     }
 
     void ENVBACKENDTermBuilder::exitAlg(ENVBACKENDParser::AlgContext *ctx) {
@@ -131,13 +172,17 @@ namespace ualg {
     
     void ENVBACKENDTermBuilder::exitAxiom(ENVBACKENDParser::AxiomContext *ctx) {
         std::string axiom_name = ctx->NAME()->getText();
+        equation eq = eq_stack.top();
+        axioms.push_back(std::make_tuple(axiom_name, eq));
+    }
+
+    void ENVBACKENDTermBuilder::exitEquation(ENVBACKENDParser::EquationContext *ctx) {
         TermPtr right_term = term_stack.top();
         term_stack.pop();
         TermPtr left_term = term_stack.top();
         term_stack.pop();
-        axioms.push_back(std::make_tuple(axiom_name, left_term, right_term));
+        eq_stack.push({left_term, right_term});
     }
-
 
     void ENVBACKENDTermBuilder::exitNameFunc(ENVBACKENDParser::NameFuncContext *ctx) {
         funcnames.push(ctx->NAME()->getText());
@@ -145,6 +190,14 @@ namespace ualg {
 
     void ENVBACKENDTermBuilder::exitSymbolFunc(ENVBACKENDParser::SymbolFuncContext *ctx) {
         funcnames.push(ctx->SYMBOL()->getText());
+    }
+
+    void ENVBACKENDTermBuilder::exitPos(ENVBACKENDParser::PosContext *ctx) {
+        TermPos pos;
+        for (int i = 0; i < ctx->INT().size(); ++i) {
+            pos.push_back(std::stoi(ctx->INT(i)->getText()));
+        }
+        pos_stack.push(pos);
     }
 
     std::optional<TermPtr> parse_term(const std::string& code) {
@@ -166,7 +219,33 @@ namespace ualg {
             antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
 
             // Retrieve the root of the custom tree
-            return treeBuilder.get_root();            
+            return treeBuilder.get_term();            
+        } else {
+            return std::nullopt;
+        }
+    }
+
+
+    std::optional<TermPos> parse_pos(const std::string& code) {
+        using namespace antlr4;
+        
+        ANTLRInputStream input(code);
+        ENVBACKENDLexer lexer(&input);
+        CommonTokenStream tokens(&lexer);
+
+        tokens.fill();
+        
+        ENVBACKENDParser parser(&tokens);
+        tree::ParseTree *tree = parser.pos();
+
+        // Create the tree builder
+        ENVBACKENDTermBuilder treeBuilder;
+        // Check for errors
+        if (parser.getNumberOfSyntaxErrors() == 0) {
+            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
+
+            // Retrieve the root of the custom tree
+            return treeBuilder.get_pos();            
         } else {
             return std::nullopt;
         }
@@ -242,6 +321,31 @@ namespace ualg {
 
             // Retrieve the root of the custom tree
             return treeBuilder.get_algebra();            
+        } else {
+            return std::nullopt;
+        }
+    }
+
+    std::optional<proof_action> parse_proof_action(const std::string& code) {
+        using namespace antlr4;
+        
+        ANTLRInputStream input(code);
+        ENVBACKENDLexer lexer(&input);
+        CommonTokenStream tokens(&lexer);
+
+        tokens.fill();
+        
+        ENVBACKENDParser parser(&tokens);
+        tree::ParseTree *tree = parser.proofaction();
+
+        // Create the tree builder
+        ENVBACKENDTermBuilder treeBuilder;
+        // Check for errors
+        if (parser.getNumberOfSyntaxErrors() == 0) {
+            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
+
+            // Retrieve the root of the custom tree
+            return treeBuilder.get_proof_action();            
         } else {
             return std::nullopt;
         }

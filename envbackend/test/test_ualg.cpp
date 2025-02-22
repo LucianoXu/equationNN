@@ -12,6 +12,12 @@ TEST(TestAlg, parsing_term) {
     EXPECT_EQ(*actual_res, *expected_res);
 }
 
+TEST(TestAlg, parsing_pos) {
+    auto actual_res = ualg::parse_pos("(1 2 3)").value();
+    TermPos expected_res = {1, 2, 3};
+    EXPECT_EQ(actual_res, expected_res);
+}
+
 TEST(TestAlg, parsing_subst) {
     auto actual_res = ualg::parse_subst("{x: y, z: f(x y)}").value();
     subst expected_res = {{"x", make_shared<Term>("y")}, {"z", make_shared<Term>("f", vector<TermPtr>{make_shared<Term>("x"), make_shared<Term>("y")})}};
@@ -197,4 +203,57 @@ TEST(TestAlg, rewrite3) {
     auto term = parse_term("|(y x)").value();
     auto res = rule.apply(term, parse_subst("{z: u}").value());
     EXPECT_TRUE(!res.has_value());
+}
+
+
+TEST(TestAlg, rewrite_at1) {
+    Signature sig = parse_signature(R"(
+        [function]
+        & : 2
+        | : 2
+        ~ : 1
+        zero : 0
+
+        [variable]
+        x y z u v w
+    )").value();
+    
+    auto lhs = parse_term("&(x y)").value();
+    auto rhs = parse_term("|(&(y x) z)").value();
+    auto rule = RewriteRule(lhs, rhs, sig);
+
+    auto term = parse_term("|(y &(u v))").value();
+    auto pos = parse_pos("(1)").value();
+    auto res = rule.apply_at(term, pos, parse_subst("{z: u}").value());
+
+    EXPECT_EQ(*res.value(), *parse_term("|(y |(&(v u) u))").value());
+}
+
+
+TEST(TestAlg, proof_action1) {
+    Algebra alg = parse_alg(R"(
+        [function]
+        & : 2
+        | : 2
+        ~ : 1
+        zero : 0
+
+        [variable]
+        x y z u v w
+
+        [axiom]
+        (AX1) &(x y) = |(&(y x) z)
+    )").value();
+    
+    SymbolKernel kernel(alg);
+
+    auto lhs = parse_term("|(y &(u v))").value();
+    auto rhs = parse_term("|(&(v u) u)").value();
+
+    equation eq = {lhs, rhs};
+    proof_action act = parse_proof_action("AX1_L2R (0 1) {z: u}").value();
+
+    auto res = kernel.action(eq, act);
+    EXPECT_EQ(res, SUCCESS);
+    EXPECT_EQ(*eq.lhs, *parse_term("|(y |(&(v u) u))").value());
 }

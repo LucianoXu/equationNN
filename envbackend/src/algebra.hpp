@@ -89,7 +89,7 @@ namespace ualg{
         Term(const std::string& head, std::vector<TermPtr>&& args);
 
         const std::string& get_head() const;
-        const std::vector<TermPtr>& get_args() const;
+    const std::vector<TermPtr>& get_args() const;
 
         bool operator == (const Term& other) const;
         bool operator != (const Term& other) const;
@@ -116,24 +116,32 @@ namespace ualg{
         TermPtr replace_at(const TermPos& pos, TermPtr new_subterm) const;
     };
 
+    struct equation {
+        TermPtr lhs;
+        TermPtr rhs;
+
+        std::string to_string() const {
+            return lhs->to_string() + " = " + rhs->to_string();
+        }
+    };
 
     class Algebra {
 
     private:
         Signature sig;
-        std::vector<std::tuple<std::string, TermPtr, TermPtr>> init_axioms;
+        std::vector<std::pair<std::string, equation>> init_axioms;
 
     public:
         Algebra(
             const Signature& sig,
-            const std::vector<std::tuple<std::string, TermPtr, TermPtr>>& axioms) :
+            const std::vector<std::pair<std::string, equation>>& axioms) :
             sig(sig), init_axioms(axioms) {
 
             // check whether the axioms are valid in the signature
             for (const auto& axiom : axioms) {
-                auto [name, lhs, rhs] = axiom;
-                if (!sig.term_valid(lhs) || !sig.term_valid(rhs)) {
-                    throw std::runtime_error("Invalid axiom: " + name + ": " + lhs->to_string() + " = " + rhs->to_string());
+                auto [name, eq] = axiom;
+                if (!sig.term_valid(eq.lhs) || !sig.term_valid(eq.rhs)) {
+                    throw std::runtime_error("Invalid axiom: " + name + ": " + eq.to_string());
                 }
             }
         }
@@ -144,6 +152,10 @@ namespace ualg{
 
         const Signature& get_signature() const {
             return sig;
+        }
+
+        const std::vector<std::pair<std::string, equation>>& get_axioms() const {
+            return init_axioms;
         }
     };
 
@@ -218,6 +230,15 @@ namespace ualg{
         std::string to_string() const;
 
         /**
+         * @brief Check whether the rule can be applied to the term.
+         * 
+         * @param term 
+         * @return true 
+         * @return false 
+         */
+        bool match_term(TermPtr term) const;
+
+        /**
          * @brief Apply the rewrite rule to the term with the specified substitution.
          * 
          * @param term 
@@ -225,6 +246,8 @@ namespace ualg{
          * @return std::optional<TermPtr> 
          */
         std::optional<TermPtr> apply(TermPtr term, const subst& spec_subst) const;
+
+        std::optional<TermPtr> apply_at(TermPtr term, const TermPos& pos, const subst& spec_subst) const;
     };
 
 }   // namespace ualg

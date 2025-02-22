@@ -192,7 +192,7 @@ namespace ualg {
         res += sig.to_string();
         res += "\n[axiom]\n";
         for (const auto& axiom : init_axioms) {
-            res += "(" + get<0>(axiom) + ") " + get<1>(axiom)->to_string() + " = " + get<2>(axiom)->to_string() + "\n";
+            res += "(" + axiom.first + ") " + axiom.second.to_string() + "\n";
         }
         return res;
     }
@@ -310,6 +310,10 @@ namespace ualg {
         return lhs->to_string() + " -> " + rhs->to_string();
     }
 
+    bool RewriteRule::match_term(TermPtr term) const {
+        return ualg::match(term, lhs, *p_sig, {}).has_value();
+    }
+
     optional<TermPtr> RewriteRule::apply(TermPtr term, const subst& spec_subst) const {
         auto temp_subst = spec_subst;
         
@@ -330,5 +334,21 @@ namespace ualg {
         }
     }
 
+    
+    std::optional<TermPtr> RewriteRule::apply_at(TermPtr term, const TermPos& pos, const subst& spec_subst) const {
+        if (pos.size() == 0) {
+            return apply(term, spec_subst);
+        }
+
+        auto new_subterm = term->get_subterm(pos);
+        auto new_subterm_res = apply_at(new_subterm, TermPos(pos.begin() + 1, pos.end()), spec_subst);
+
+        if (new_subterm_res.has_value()) {
+            return term->replace_at(pos, new_subterm_res.value());
+        }
+        else {
+            return nullopt;
+        }
+    }
 
 } // namespace ualg

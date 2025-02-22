@@ -12,6 +12,7 @@
 #include <stack>
 
 #include "algebra.hpp"
+#include "env.hpp"
 
 namespace ualg {
 
@@ -22,6 +23,14 @@ namespace ualg {
      * @return TermPtr
      */
     std::optional<TermPtr> parse_term(const std::string& code);
+
+    /**
+     * @brief Parse the given code.
+     * 
+     * @param code 
+     * @return std::optional<TermPos> 
+     */
+    std::optional<TermPos> parse_pos(const std::string& code);
 
     /**
      * @brief Parse the given code.
@@ -47,5 +56,13 @@ namespace ualg {
      * @return std::optional<Algebra> 
      */
     std::optional<Algebra> parse_alg(const std::string& code);
+
+    /**
+     * @brief Parse the given code.
+     * 
+     * @param code 
+     * @return std::optional<proof_action> 
+     */
+    std::optional<proof_action> parse_proof_action(const std::string& code);
 
 } // namespace ualg

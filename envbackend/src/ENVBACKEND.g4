@@ -2,6 +2,14 @@ grammar ENVBACKEND;
 
 // Parser rules
 
+////////////////////////////////////////////////
+// RL langauge
+proofstep : equation ':' proofaction;
+
+// The action grammar
+proofaction : NAME pos subst;
+
+////////////////////////////////////////////////
 // Algebra
 alg : sig '[axiom]' axiom+
     ;
@@ -12,7 +20,9 @@ sig : '[function]' func+ '[variable]' NAME+
 
 func : funcname ':' INT ;
 
-axiom : '(' NAME ')' expr '=' expr ;
+axiom : '(' NAME ')' equation ;
+
+equation : expr '=' expr ;
 
 subst : '{' '}'                                         # EmptySubst
       | '{' NAME ':' expr (',' NAME ':' expr)* '}'      # NonEmptySubst
@@ -25,6 +35,11 @@ expr :   funcname                         # Identifier
 funcname    : NAME                                 # NameFunc
             | SYMBOL                               # SymbolFunc
             ;
+
+// The grammar for positions
+pos : '(' INT* ')' ;
+
+//////////////////////////////////////////////
 
 // Lexer rules
 INT :  '0' | [1-9][0-9]* ;
