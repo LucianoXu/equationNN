@@ -3,6 +3,9 @@ project(EQUATIONNN LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# set the python executable
+set(PYTHON_EXECUTABLE "/Users/xuyingte/anaconda3/bin/python3")
+message(STATUS "Python executable: ${PYTHON_EXECUTABLE}")
 
 #######################################################
 # Include FetchContent module
@@ -18,6 +21,16 @@ FetchContent_Declare(
 # Prevent GoogleTest from installing
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
+
+# Declare pybind11 as an external project to fetch
+FetchContent_Declare(
+  pybind11
+  GIT_REPOSITORY https://github.com/pybind/pybind11.git
+  GIT_TAG master
+)
+
+# Make pybind11 available
+FetchContent_MakeAvailable(pybind11)
 #######################################################
 
 

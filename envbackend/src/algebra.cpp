@@ -122,6 +122,11 @@ namespace ualg {
         return str;
     }
 
+    string Term::to_repr() const {
+        string str = "<Term " + to_string() + ">";
+        return str;
+    }
+
     set<string> Term::get_variables(const Signature& sig) const {
         auto& sig_variables = sig.get_variables();
         if (args.size() == 0) {
@@ -149,7 +154,7 @@ namespace ualg {
         //     throw runtime_error("Position out of range.");
         // }
 
-        return args[pos[0]];
+        return args[pos[0]]->get_subterm(TermPos(pos.begin() + 1, pos.end()));
     }
 
     TermPtr Term::replace_term(TermPtr pattern, TermPtr replacement) const {

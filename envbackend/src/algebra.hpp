@@ -98,7 +98,7 @@ namespace ualg{
         Term(const std::string& head, std::vector<TermPtr>&& args);
 
         const std::string& get_head() const;
-    const std::vector<TermPtr>& get_args() const;
+        const std::vector<TermPtr>& get_args() const;
 
         bool operator == (const Term& other) const;
         bool operator != (const Term& other) const;
@@ -108,6 +108,13 @@ namespace ualg{
         bool is_atomic() const;
 
         std::string to_string() const;
+
+        /**
+         * @brief The representation of the term (used in python).
+         * 
+         * @return std::string 
+         */
+        std::string to_repr() const;
 
         std::set<std::string> get_variables(const Signature& sig) const;
 
@@ -138,6 +145,14 @@ namespace ualg{
 
         std::string to_string() const {
             return lhs->to_string() + " = " + rhs->to_string();
+        }
+
+        std::string to_repr() const {
+            return "<Equation " + to_string() + ">";
+        }
+
+        bool operator == (const equation& other) const {
+            return *lhs == *other.lhs && *rhs == *other.rhs;
         }
     };
 

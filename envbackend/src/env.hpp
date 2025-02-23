@@ -69,15 +69,9 @@ namespace ualg {
         std::vector<std::pair<std::string, TermPos>> get_valid_rule_pos(const equation& eq) const;
     };
 
-    // /**
-    //  * @brief The environment that directly deals with string representation of the algebraic objects.
-    //  * 
-    //  */
-    // class Env {
-    // private:
-    //     SymbolKernel kernel;
 
-    // };
+    ACT_RESULT apply_action(SymbolKernel& kernel, equation& eq, const std::string& action_code);
+
 
     /**
      * @brief return the vocabulary for the algebra.

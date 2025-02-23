@@ -28,7 +28,12 @@ namespace ualg {
         try {
             auto side = pos[0] == 0 ? eq.lhs : eq.rhs;
 
-            auto& rule = rules[rule_name];
+            // check whether the rule name is valid
+            auto find_res = rules.find(rule_name);
+            if (find_res == rules.end()) {
+                return FAILURE;
+            }
+            auto& rule = find_res->second;
             auto res = rule.apply_at(side, TermPos(pos.begin()+1, pos.end()), spec_subst);
 
             if (res.has_value()) {
@@ -47,6 +52,14 @@ namespace ualg {
         catch (const std::exception& e) {
             return FAILURE;
         }
+    }
+
+    ACT_RESULT apply_action(SymbolKernel& kernel, equation& eq, const string& action_code) {
+        auto act = parse_proof_action(action_code);
+        if (!act.has_value()) {
+            return FAILURE;
+        }
+        return kernel.action(eq, act.value());
     }
 
     std::vector<std::pair<std::string, TermPos>> SymbolKernel::get_valid_rule_pos(const equation& eq) const {

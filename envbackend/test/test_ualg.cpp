@@ -80,6 +80,21 @@ x y z u v w
     EXPECT_EQ(actual_res, expected_res);
 }
 
+TEST(TestAlg, term_get_subterm) {
+    auto term = parse_term("f(g(x y) x)").value();
+    auto res = term->get_subterm({0, 1});
+    auto expected_res = make_shared<Term>("y");
+    EXPECT_EQ(*res, *expected_res);
+}
+
+TEST(TestAlg, term_replace_term) {
+    auto term1 = parse_term("f(a g(b c))").value();
+    auto term2 = parse_term("f(a g(b c))").value();
+    auto pattern = parse_term("a").value();
+    auto res = term2->replace_term(pattern, term1);
+    EXPECT_EQ(*res, *parse_term("f(f(a g(b c)) g(b c))").value());
+}
+
 TEST(TestAlg, term_get_all_subterms) {
     auto term = parse_term("f(g(x y) x)").value();
     auto res = term->get_all_subterms();
@@ -311,4 +326,27 @@ TEST(TestAlg, next_token_machine1) {
     }
 
     EXPECT_EQ(machine.get_state(), NextTokenMachine::HALT);
+}
+
+TEST(TestAlg, apply_action) {
+    Algebra alg = parse_alg(R"(
+        [function]
+        & : 2
+        | : 2
+        ~ : 1
+        zero : 0
+
+        [variable]
+        x y z u v w
+
+        [axiom]
+        (AX1) &(x y) = |(&(y x) z)
+        (AX2) &(x y) = |(z w)
+    )").value();
+
+    SymbolKernel kernel(alg);
+
+    auto eq = parse_equation("&(x y) = &(&(u u) y)").value();
+    apply_action(kernel, eq, "AX2_L2R (1) {w: |(zero zero), z: &(u v)}");
+    EXPECT_EQ(eq, parse_equation("&(x y) = |(&(u v) |(zero zero))").value());
 }

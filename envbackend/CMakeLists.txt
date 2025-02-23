@@ -17,3 +17,20 @@ target_link_libraries(
     PUBLIC
         ENVBACKEND
 )
+
+
+pybind11_add_module(
+    ENVBACKENDPY 
+    
+    pybind_interface.cpp
+)
+
+set_target_properties(ENVBACKENDPY PROPERTIES OUTPUT_NAME "envbackend")
+
+install(TARGETS ENVBACKENDPY DESTINATION .)
+
+target_link_libraries(
+    ENVBACKENDPY
+    PUBLIC
+        ENVBACKEND
+)
