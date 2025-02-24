@@ -25,7 +25,7 @@ set(ANTLR_PARSER_GEN_FILES
 # Custom command for ANTLR
 add_custom_command(
     OUTPUT ${ANTLR_PARSER_GEN_FILES}
-    COMMAND java -jar /Users/xuyingte/Java3P/antlr-4.13.2-complete.jar -Dlanguage=Cpp -visitor ${CMAKE_CURRENT_SOURCE_DIR}/${GRAMMAR_NAME}.g4 -o ${ANTLR_PARSER_DIR}
+    COMMAND java -jar ${ANTLR4} -Dlanguage=Cpp -visitor ${CMAKE_CURRENT_SOURCE_DIR}/${GRAMMAR_NAME}.g4 -o ${ANTLR_PARSER_DIR}
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${GRAMMAR_NAME}.g4
     COMMENT "Running ANTLR to generate C++ code from ${GRAMMAR_NAME}.g4"
 )

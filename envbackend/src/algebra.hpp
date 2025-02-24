@@ -31,6 +31,7 @@ x y z u v w
 #include <set>
 #include <memory>
 #include <vector>
+#include <optional>
 
 namespace ualg{
 

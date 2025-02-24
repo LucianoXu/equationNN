@@ -179,7 +179,7 @@ namespace ualg {
     void ENVBACKENDTermBuilder::exitAxiom(ENVBACKENDParser::AxiomContext *ctx) {
         std::string axiom_name = ctx->NAME()->getText();
         equation eq = eq_stack.top();
-        axioms.push_back(std::make_tuple(axiom_name, eq));
+        axioms.push_back(make_pair(axiom_name, eq));
     }
 
     void ENVBACKENDTermBuilder::exitEquation(ENVBACKENDParser::EquationContext *ctx) {

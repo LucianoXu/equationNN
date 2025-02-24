@@ -3,15 +3,13 @@ project(EQUATIONNN LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# set the python executable
-set(PYTHON_EXECUTABLE "/Users/xuyingte/anaconda3/bin/python3")
-message(STATUS "Python executable: ${PYTHON_EXECUTABLE}")
 
 #######################################################
 # Include FetchContent module
 
 include(FetchContent)
 
+# GoogleTest
 # Download GoogleTest
 FetchContent_Declare(
     googletest
@@ -22,13 +20,35 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+
+# Python
+# if PYTHON_EXECUTABLE is not set, try to find python with find_package
+if (NOT DEFINED PYTHON_EXECUTABLE)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(PYTHON_EXECUTABLE ${Python3_EXECUTABLE})
+else()
+    # Check the python executable
+    if(NOT EXISTS ${PYTHON_EXECUTABLE})
+        message(FATAL_ERROR "Python executable not found: ${PYTHON_EXECUTABLE}")
+    endif()
+endif()
+message(STATUS "Python executable: ${PYTHON_EXECUTABLE}")
+
+
+# ANTLR4
+# set the ANTLR4 executable
+set(ANTLR4 "${CMAKE_CURRENT_SOURCE_DIR}/extern/antlr-4.13.2-complete.jar")
+message(STATUS "ANTLR4 executable: ${ANTLR4}")
+
+
+
+# pybind11
 # Declare pybind11 as an external project to fetch
 FetchContent_Declare(
   pybind11
   GIT_REPOSITORY https://github.com/pybind/pybind11.git
   GIT_TAG master
 )
-
 # Make pybind11 available
 FetchContent_MakeAvailable(pybind11)
 #######################################################
@@ -47,8 +67,15 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build: Debug or Release" FORCE)
 endif()
 
-# Set the compiler
-set(CMAKE_CXX_COMPILER "clang++")
+# Set the compiler to clang++
+# check whether clang++ is available
+find_program(CLANGPP clang++)
+if(CLANGPP)
+    set(CMAKE_CXX_COMPILER ${CLANGPP})
+    message(STATUS "Using clang++ compiler: ${CLANGPP}")
+else()
+    message(FATAL_ERROR "clang++ compiler not found")
+endif()
 
 
 # Set build flags
