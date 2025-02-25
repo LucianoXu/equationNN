@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "parser.hpp"
+
 namespace ualg {
 
     struct proof_action {
@@ -60,6 +62,8 @@ namespace ualg {
          */
         ACT_RESULT action(equation& eq, const proof_action& act);
 
+        ACT_RESULT action(equation& eq, const std::string& action_code);
+
         /**
          * @brief Get the valid rule pos objects
          * 
@@ -70,16 +74,60 @@ namespace ualg {
     };
 
 
-    ACT_RESULT apply_action(SymbolKernel& kernel, equation& eq, const std::string& action_code);
 
 
     /**
-     * @brief return the vocabulary for the algebra.
-     * 
-     * @param code 
-     * @return std::vector<std::string>, the int binding for the variables are the index in the vector.
+     * @brief The tokenizer class. It is generated according to the algebra, and can transform between the string and the int.
      */
-    std::vector<std::string> get_vocab(const Algebra& algebra);
+    class Tokenizer {
+    private:
+        const Algebra& algebra;
+        const Signature& sig;
+        std::vector<std::string> vocab;
+        std::map<std::string, int> vocab_map;
+        std::vector<int> pos_int_map;
+
+    public:
+        Tokenizer(const Algebra& _algebra);
+
+        const std::vector<std::string>& get_vocab() const {
+            return vocab;
+        }
+
+        int get_vocab_size() const {
+            return vocab.size();
+        }
+
+        int get_encoding(const std::string& str) const {
+            auto find_res = vocab_map.find(str);
+            if (find_res == vocab_map.end()) {
+                throw std::runtime_error("Invalid token representation: " + str);
+            }
+            return vocab_map.at(str);
+        }
+
+        std::string get_token(int token) const {
+            if (token < 0 || token >= vocab.size()) {
+                throw std::runtime_error("Invalid token number: " + std::to_string(token));
+            }
+            return vocab[token];
+        }
+
+        int get_pos_int_encoding(int pos) const {
+            if (pos < 0 || pos >= pos_int_map.size()) {
+                throw std::runtime_error("Invalid position number: " + std::to_string(pos));
+            }
+            return pos_int_map[pos];
+        }
+
+        bool is_valid_token(std::string token) const {
+            return vocab_map.find(token) != vocab_map.end();
+        }
+
+        std::vector<int> encode(const std::string& code) const;
+
+        std::string decode(const std::vector<int>& encoding) const;
+    };
 
     /**
      * @brief The machine that predicts the next possible token in the algebraic manipulation.
@@ -116,16 +164,16 @@ namespace ualg {
     private:
         const Algebra& algebra;
         const Signature& sig;
+        Tokenizer tokenizer;
         SymbolKernel kernel;
+
         std::set<int> func_symbols;
         std::set<int> var_symbols;
+
+        // This mapping preserves the required variable tokens for each rule.
         std::map<int, std::set<int>> required_vars_map;
 
-        std::vector<std::string> vocab;
-        std::map<std::string, int> vocab_map;
-        std::vector<int> pos_int_map;
-
-        std::vector<int> token_seq;
+        std::vector<int> encodings;
         std::set<int> valid_next_tokens;
 
         // States to determine the grammar stage
@@ -157,6 +205,17 @@ namespace ualg {
          */
         NextTokenMachine(const Algebra& algebra);
 
+        /**
+         * @brief Construct a new Next Token Machine object by copying the other machine.
+         * 
+         * @param other
+         */
+        NextTokenMachine(const NextTokenMachine& other);
+
+        NextTokenMachine copy() const {
+            return NextTokenMachine(*this);
+        }
+
         const std::set<int>& get_valid_next_tokens() const {
             return valid_next_tokens;
         }
@@ -170,10 +229,10 @@ namespace ualg {
         bool push_token(int token);
 
         bool push_token(std::string token) {
-            if (vocab_map.find(token) == vocab_map.end()) {
+            if (!tokenizer.is_valid_token(token)) {
                 return false;
             }
-            return push_token(vocab_map[token]);
+            return push_token(tokenizer.get_encoding(token));
         }
 
         std::string to_string() const;

@@ -15,6 +15,12 @@
 #include "env.hpp"
 
 namespace ualg {
+
+    /**
+     * @brief Return the sliced tokens (in string) from the given code.
+     */
+    std::vector<std::string> parse_tokens(const std::string& code);
+
     /**
      * @brief Parse the given code.
      * 

@@ -61,6 +61,7 @@ FetchContent_MakeAvailable(pybind11)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Define build types with a default
 if(NOT CMAKE_BUILD_TYPE)

@@ -54,12 +54,12 @@ namespace ualg {
         }
     }
 
-    ACT_RESULT apply_action(SymbolKernel& kernel, equation& eq, const string& action_code) {
+    ACT_RESULT SymbolKernel::action(equation& eq, const string& action_code) {
         auto act = parse_proof_action(action_code);
         if (!act.has_value()) {
             return FAILURE;
         }
-        return kernel.action(eq, act.value());
+        return action(eq, act.value());
     }
 
     std::vector<std::pair<std::string, TermPos>> SymbolKernel::get_valid_rule_pos(const equation& eq) const {
@@ -90,15 +90,14 @@ namespace ualg {
         return res;
     }
 
-    vector<string> get_vocab(const Algebra& algebra) {
+    Tokenizer::Tokenizer(const Algebra& _algebra) : algebra(_algebra), sig(_algebra.get_signature()) {
         // The basic symbols
-        vector<string> res = {"<PAD>", "<SOS>", "<EOS>", "(", ")", ":", "{", "}", ",", "="};
+        vocab = {"<PAD>", "<SOS>", "<EOS>", "(", ")", ":", "{", "}", ",", "="};
 
         // The function symbols
-        auto& sig = algebra.get_signature();
-        int max_arity = 2;
+        int max_arity = 2;  // starting with 2, for the choice in equation A = B
         for (const auto& [name, arity] : sig.get_func_symbols()) {
-            res.push_back(name);
+            vocab.push_back(name);
             if (arity > max_arity) {
                 max_arity = arity;
             }
@@ -106,20 +105,45 @@ namespace ualg {
 
         // The variables
         for (const auto& var : sig.get_variables()) {
-            res.push_back(var);
+            vocab.push_back(var);
         }
 
         // The positions
         for (int i = 0; i < max_arity; ++i) {
-            res.push_back(::to_string(i));
+            vocab.push_back(::to_string(i));
         }
 
         // The rewrite rule names
         auto kernel = SymbolKernel(algebra);
         for (const auto& name : kernel.get_rule_names()) {
-            res.push_back(name);
-        }   
+            vocab.push_back(name);
+        }
 
+        ////////////////////////////////////////////////
+        // Build the mapping
+        for (size_t i = 0; i < vocab.size(); ++i) {
+            vocab_map[vocab[i]] = i;
+        }
+
+        for (int i = 0; i < max_arity; ++i) {
+            pos_int_map.push_back(vocab_map[::to_string(i)]);
+        }
+    }
+
+    vector<int> Tokenizer::encode(const string& code) const {
+        vector<int> res;
+        auto tokens = parse_tokens(code);
+        for (const auto& str : tokens) {
+            res.push_back(get_encoding(str));
+        }
+        return res;
+    }
+
+    string Tokenizer::decode(const vector<int>& encoding) const {
+        string res;
+        for (const auto& token : encoding) {
+            res += get_token(token) + " ";
+        }
         return res;
     }
 
@@ -135,20 +159,20 @@ namespace ualg {
                 valid_next_tokens.insert(var_symbols.begin(), var_symbols.end());
             }
             else if (parenthesis == OPENING) {
-                valid_next_tokens = {vocab_map["("]};
+                valid_next_tokens = {tokenizer.get_encoding("(")};
             }
             else if (parenthesis == CLOSING) {
-                valid_next_tokens = {vocab_map[")"]};
+                valid_next_tokens = {tokenizer.get_encoding(")")};
             }
             break;
 
         case EQ:
-            valid_next_tokens = {vocab_map["="]};
+            valid_next_tokens = {tokenizer.get_encoding("=")};
             break;
 
         case COLON:
         case SUBST_COLON:
-            valid_next_tokens = {vocab_map[":"]};
+            valid_next_tokens = {tokenizer.get_encoding(":")};
             break;
 
         case RULE_NAME:
@@ -160,12 +184,12 @@ namespace ualg {
         case POS:
             // For POS part, the closing parenthesis is not fixed. So we don't loop up the parenthesis == closing condition.
             if (parenthesis == OPENING) {
-                valid_next_tokens = {vocab_map["("]};
+                valid_next_tokens = {tokenizer.get_encoding("(")};
             }
             else {
                 for (const auto& token : *p_current_rule_pos_tree) {
                     if (token.choice == -1) {
-                        valid_next_tokens.insert(vocab_map[")"]);
+                        valid_next_tokens.insert(tokenizer.get_encoding(")"));
                     }
                     else {
                         valid_next_tokens.insert(token.choice);
@@ -176,10 +200,10 @@ namespace ualg {
 
         case SUBST:
             if (parenthesis == OPENING) {
-                valid_next_tokens = {vocab_map["{"]};
+                valid_next_tokens = {tokenizer.get_encoding("{")};
             }
             else if (parenthesis == CLOSING) {
-                valid_next_tokens = {vocab_map["}"]};
+                valid_next_tokens = {tokenizer.get_encoding("}")};
             }
             else {
                 // Check the remaining variables
@@ -190,11 +214,11 @@ namespace ualg {
             break;
         
         case COMMA:
-            valid_next_tokens = {vocab_map[","]};
+            valid_next_tokens = {tokenizer.get_encoding(",")};
             break;
 
         case EOS:
-            valid_next_tokens = {vocab_map["<EOS>"]};
+            valid_next_tokens = {tokenizer.get_encoding("<EOS>")};
             break;
 
         case HALT:
@@ -223,17 +247,17 @@ namespace ualg {
         for (const auto& [rule_name, pos] : valid_rule_pos) {
             auto p_trees = &valid_rule_pos_tree;
 
-            auto branch = find_if(p_trees->begin(), p_trees->end(), [&](const CandidateTree& t) { return t.choice == vocab_map[rule_name]; });
+            auto branch = find_if(p_trees->begin(), p_trees->end(), [&](const CandidateTree& t) { return t.choice == tokenizer.get_encoding(rule_name); });
             if (branch == p_trees->end()) {
-                p_trees->push_back({vocab_map[rule_name], {}});
+                p_trees->push_back({tokenizer.get_encoding(rule_name), {}});
                 branch = p_trees->end() - 1;
             }
             p_trees = &(branch->children);
 
             for (int i = 0; i < pos.size(); ++i) {
-                auto it = find_if(p_trees->begin(), p_trees->end(), [&](const CandidateTree& t) { return t.choice == pos_int_map[pos[i]]; });
+                auto it = find_if(p_trees->begin(), p_trees->end(), [&](const CandidateTree& t) { return t.choice == tokenizer.get_pos_int_encoding(pos[i]); });
                 if (it == p_trees->end()) {
-                    p_trees->push_back({pos_int_map[pos[i]], {}});
+                    p_trees->push_back({tokenizer.get_pos_int_encoding(pos[i]), {}});
                     it = p_trees->end() - 1;
                 }
                 p_trees = &(it->children);
@@ -249,17 +273,14 @@ namespace ualg {
         // cout << endl;
     }
 
-    NextTokenMachine::NextTokenMachine(const Algebra& _algebra) : algebra(_algebra), sig(_algebra.get_signature()), kernel(SymbolKernel(_algebra)), vocab(get_vocab(_algebra)) {
-        for (size_t i = 0; i < vocab.size(); ++i) {
-            vocab_map[vocab[i]] = i;
-        }
+    NextTokenMachine::NextTokenMachine(const Algebra& _algebra) : algebra(_algebra), sig(_algebra.get_signature()), tokenizer(Tokenizer(_algebra)), kernel(SymbolKernel(_algebra)) {
 
         for (const auto& f : algebra.get_signature().get_func_symbols()) {
-            func_symbols.insert(vocab_map[f.name]);
+            func_symbols.insert(tokenizer.get_encoding(f.name));
         }
 
         for (const auto& v : algebra.get_signature().get_variables()) {
-            var_symbols.insert(vocab_map[v]);
+            var_symbols.insert(tokenizer.get_encoding(v));
         }
 
         // get the maximum arity
@@ -270,26 +291,42 @@ namespace ualg {
             }
         }
 
-        for (int i = 0; i < max_arity; ++i) {
-            pos_int_map.push_back(vocab_map[::to_string(i)]);
-        }
-
         // calculate the required variables
         for (const auto& [name, rule] : kernel.get_rules()) {
             auto name_set = rule.get_required_subst_vars();
             set<int> token_set = {};
             for (const auto& var : name_set) {
-                token_set.insert(vocab_map[var]);
+                token_set.insert(tokenizer.get_encoding(var));
             }
-            required_vars_map[vocab_map[name]] = token_set;
+            required_vars_map[tokenizer.get_encoding(name)] = token_set;
         }
 
 
-        token_seq.push_back(vocab_map["<SOS>"]);
+        encodings.push_back(tokenizer.get_encoding("<SOS>"));
         state = LHS;
         parenthesis = NONE;
 
         calculate_valid_next_tokens();
+    }
+
+    NextTokenMachine::NextTokenMachine(const NextTokenMachine& other) : 
+            algebra(other.algebra),
+            sig(other.sig),
+            tokenizer(other.tokenizer),
+            kernel(other.kernel) {
+        func_symbols = other.func_symbols;
+        var_symbols = other.var_symbols;
+        required_vars_map = other.required_vars_map;
+        encodings = other.encodings;
+        valid_next_tokens = other.valid_next_tokens;
+        state = other.state;
+        term_gen_stack = other.term_gen_stack;
+        parenthesis = other.parenthesis;
+
+        valid_rule_pos_tree = other.valid_rule_pos_tree;
+        p_current_rule_pos_tree = &valid_rule_pos_tree;
+
+        remaining_vars = other.remaining_vars;
     }
 
     bool NextTokenMachine::push_token(int token) {
@@ -297,7 +334,7 @@ namespace ualg {
             return false;
         }
 
-        token_seq.push_back(token);
+        encodings.push_back(token);
 
         std::vector<CandidateTree> temp;
         string eq_code = "";
@@ -315,11 +352,11 @@ namespace ualg {
                     if (!term_gen_stack.empty()) term_gen_stack.top().second += 1;
                 }
                 else {
-                    int arity = sig.get_arity(vocab[token]);
+                    // get the arity of the function symbol
+                    int arity = sig.get_arity(tokenizer.get_token(token));
                     if (!term_gen_stack.empty()) term_gen_stack.top().second += 1;
                     if (arity > 0) {   
-                        // get the arity of the function symbol
-                        term_gen_stack.push({sig.get_arity(vocab[token]), 0});
+                        term_gen_stack.push({arity, 0});
                         parenthesis = OPENING;
                     }
                 }
@@ -359,8 +396,8 @@ namespace ualg {
             state = RULE_NAME;
 
             // get the valid rule names
-            for (int i = 1; i < token_seq.size()-1; ++i) {
-                eq_code += vocab[token_seq[i]] + " ";
+            for (int i = 1; i < encodings.size()-1; ++i) {
+                eq_code += tokenizer.get_token(encodings[i]) + " ";
             }
             parse_valid_rule_pos_tree(
                 kernel.get_valid_rule_pos(parse_equation(eq_code).value())
@@ -391,7 +428,7 @@ namespace ualg {
                 parenthesis = NONE;
             }
 
-            else if (token == vocab_map[")"]) {
+            else if (token == tokenizer.get_encoding(")")) {
                 parenthesis = OPENING;
                 state = SUBST;
             }
@@ -446,19 +483,13 @@ namespace ualg {
     std::string NextTokenMachine::to_string() const {
         string res = "SEQ:\t\t";
         // input
-        for (int token : token_seq) {
-            res += vocab[token] + " ";
+        for (int encoding : encodings) {
+            res += tokenizer.get_token(encoding) + " ";
         }
         // possible next tokens
         res += "\nVALID NEXT:\t";
-        for (int token : valid_next_tokens) {
-            if (token > 0 && token < vocab.size()) {
-                res += vocab[token] + " ";
-            }
-            else {
-                throw std::runtime_error("Invalid token.");
-            }
-            
+        for (int encoding : valid_next_tokens) {
+            res += tokenizer.get_token(encoding) + " ";
         }
         return res;
     }

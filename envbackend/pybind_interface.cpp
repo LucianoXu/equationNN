@@ -44,10 +44,23 @@ PYBIND11_MODULE(envbackend, m) {
 
     py::class_<SymbolKernel>(m, "SymbolKernel")
         .def(py::init<const Algebra&>())
-        .def("action", &SymbolKernel::action);
+        .def("action", py::overload_cast<equation&, const proof_action&>(&SymbolKernel::action))
+        .def("action_by_code", py::overload_cast<equation&, const string&>(&SymbolKernel::action));
+
+    py::class_<Tokenizer>(m, "Tokenizer")
+        .def(py::init<const Algebra&>())
+        .def_property_readonly("vocab", &Tokenizer::get_vocab)
+        .def("get_token", &Tokenizer::get_token)
+        .def("get_encoding", &Tokenizer::get_encoding)
+        .def("get_pos_int_encoding", &Tokenizer::get_pos_int_encoding)
+        .def("is_valid_token", &Tokenizer::is_valid_token)
+        .def("encode", &Tokenizer::encode)
+        .def("decode", &Tokenizer::decode);
 
     py::class_<NextTokenMachine> next_tok_machine(m, "NextTokenMachine");
     next_tok_machine.def(py::init<const Algebra&>())
+        .def(py::init<const NextTokenMachine&>())
+        .def("copy", &NextTokenMachine::copy)
         .def("get_valid_next_tokens", &NextTokenMachine::get_valid_next_tokens)
         .def("push_token", py::overload_cast<int>(&NextTokenMachine::push_token))
         .def("push_token", py::overload_cast<string>(&NextTokenMachine::push_token))
@@ -72,6 +85,4 @@ PYBIND11_MODULE(envbackend, m) {
     m.def("parse_term", &parse_term, "A function that parses the term code.");
     m.def("parse_equation", &parse_equation, "A function that parses the equation code.");
     m.def("parse_alg", &parse_alg, "A function that parses the algebra code.");
-    m.def("get_vocab", &get_vocab, "A function that returns the vocabulary for the algebra.");
-    m.def("apply_action", &apply_action, "A function that applies the action to the equation.");
 }

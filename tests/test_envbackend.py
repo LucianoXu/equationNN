@@ -42,10 +42,13 @@ def test_parse_alg():
     alg = env.parse_alg(algebra_code)
     assert alg is not None
 
-def test_get_vocab():
+def test_tokenizer():
     alg = env.parse_alg(algebra_code)
-    vocab = env.get_vocab(alg)
-    assert vocab == ['<PAD>', '<SOS>', '<EOS>', '(', ')', ':', '{', '}', ',', '=', '&', '|', '~', 'zero', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', 'AX1_L2R', 'AX1_R2L']
+    tokenizer = env.Tokenizer(alg)
+    assert tokenizer.vocab == ['<PAD>', '<SOS>', '<EOS>', '(', ')', ':', '{', '}', ',', '=', '&', '|', '~', 'zero', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', 'AX1_L2R', 'AX1_R2L']
+
+    encoding = tokenizer.encode("zero = x")
+    assert tokenizer.decode(encoding) == "zero = x "
 
 def test_next_token_machine():
     alg = env.parse_alg(algebra_code)
@@ -54,6 +57,23 @@ def test_next_token_machine():
     assert machine.push_token("=")
     assert machine.push_token("x")
     assert machine.state == env.NextTokenMachine.State.COLON
+
+def test_next_token_machine_copy():
+    alg = env.parse_alg(algebra_code)
+    machine = env.NextTokenMachine(alg)
+    machine_copy = machine.copy()
+
+    assert machine.push_token("zero")
+    assert machine.push_token("=")
+    assert machine.push_token("x")
+    assert machine.state == env.NextTokenMachine.State.COLON
+
+    assert machine_copy.push_token("zero")
+    assert machine_copy.push_token("=")
+    assert machine_copy.push_token("x")
+    assert machine_copy.state == env.NextTokenMachine.State.COLON
+
+
 
 def test_apply_action():
     algebra_code = '''
@@ -73,6 +93,6 @@ def test_apply_action():
     alg = env.parse_alg(algebra_code)
     kernel = env.SymbolKernel(alg)
     eq = env.parse_equation("&(x y) = &(&(u u) y)")
-    env.apply_action(kernel, eq, "AX2_L2R (1) {w: |(zero zero), z: &(u v)}")
+    kernel.action_by_code(eq, "AX2_L2R (1) {w: |(zero zero), z: &(u v)}")
     assert eq == env.parse_equation("&(x y) = |(&(u v) |(zero zero))")
     

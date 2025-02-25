@@ -1,7 +1,8 @@
 #include "parser.hpp"
 
-namespace ualg {
+using namespace std;
 
+namespace ualg {
 
     class ENVBACKENDTermBuilder : public ENVBACKENDBaseListener {
     public:
@@ -56,16 +57,16 @@ namespace ualg {
         void exitPos(ENVBACKENDParser::PosContext *ctx) override;
     
     private:
-        std::stack<std::string> funcnames;
-        std::stack<TermPtr> term_stack;
-        std::stack<equation> eq_stack;
-        std::stack<subst> subst_stack;
-        std::stack<TermPos> pos_stack;
+        stack<string> funcnames;
+        stack<TermPtr> term_stack;
+        stack<equation> eq_stack;
+        stack<subst> subst_stack;
+        stack<TermPos> pos_stack;
 
         // the stack for the algebra specification
-        std::vector<Signature::func_symbol> functions;
-        std::vector<std::string> variables;
-        std::vector<std::pair<std::string, equation>> axioms;
+        vector<Signature::func_symbol> functions;
+        vector<string> variables;
+        vector<pair<string, equation>> axioms;
         Signature sig;
         Algebra algebra;
         proof_action act;
@@ -82,7 +83,7 @@ namespace ualg {
         if (!term_stack.empty()) {
             return std::move(term_stack.top());
         }
-        throw std::runtime_error("No root node found.");
+        throw runtime_error("No root node found.");
     }
 
     TermPos ENVBACKENDTermBuilder::get_pos() {
@@ -141,7 +142,7 @@ namespace ualg {
     void ENVBACKENDTermBuilder::exitNonEmptySubst(ENVBACKENDParser::NonEmptySubstContext *ctx) {
         subst subst_data = {};
         for (int i = ctx->NAME().size() - 1; i >= 0; --i) {
-            std::string var_name = ctx->NAME(i)->getText();
+            string var_name = ctx->NAME(i)->getText();
             subst_data[var_name] = term_stack.top();
             term_stack.pop();
         }
@@ -149,15 +150,15 @@ namespace ualg {
     }
     
     void ENVBACKENDTermBuilder::exitIdentifier(ENVBACKENDParser::IdentifierContext *ctx) {
-        std::string var_name = funcnames.top();
+        string var_name = funcnames.top();
         funcnames.pop();
-        term_stack.push(std::make_shared<Term>(var_name));
+        term_stack.push(make_shared<Term>(var_name));
     }
     
     void ENVBACKENDTermBuilder::exitApplication(ENVBACKENDParser::ApplicationContext *ctx) {
-        std::string function_name = funcnames.top();
+        string function_name = funcnames.top();
         funcnames.pop();
-        std::vector<TermPtr> arguments;
+        vector<TermPtr> arguments;
     
         // Iterate through the arguments
         for (int i = 0; i < ctx->expr().size(); ++i) {
@@ -165,19 +166,19 @@ namespace ualg {
             term_stack.pop();
         }
     
-        auto application_term = std::make_shared<Term>(function_name, std::move(arguments));
+        auto application_term = make_shared<Term>(function_name, std::move(arguments));
         term_stack.push(application_term);
     }
     
     void ENVBACKENDTermBuilder::exitFunc(ENVBACKENDParser::FuncContext *ctx) {
-        std::string func_name = funcnames.top();
+        string func_name = funcnames.top();
         funcnames.pop();
-        unsigned arity = std::stoi(ctx->INT()->getText());
+        unsigned arity = stoi(ctx->INT()->getText());
         functions.push_back({func_name, arity});
     }
     
     void ENVBACKENDTermBuilder::exitAxiom(ENVBACKENDParser::AxiomContext *ctx) {
-        std::string axiom_name = ctx->NAME()->getText();
+        string axiom_name = ctx->NAME()->getText();
         equation eq = eq_stack.top();
         axioms.push_back(make_pair(axiom_name, eq));
     }
@@ -201,12 +202,29 @@ namespace ualg {
     void ENVBACKENDTermBuilder::exitPos(ENVBACKENDParser::PosContext *ctx) {
         TermPos pos;
         for (int i = 0; i < ctx->INT().size(); ++i) {
-            pos.push_back(std::stoi(ctx->INT(i)->getText()));
+            pos.push_back(stoi(ctx->INT(i)->getText()));
         }
         pos_stack.push(pos);
     }
 
-    std::optional<equation> parse_equation(const std::string& code) {
+    vector<string> parse_tokens(const string& code) {
+        using namespace antlr4;
+        
+        ANTLRInputStream input(code);
+        ENVBACKENDLexer lexer(&input);
+        CommonTokenStream tokens(&lexer);
+
+        tokens.fill();
+        
+        vector<string> token_list;
+        for (auto token : tokens.getTokens()) {
+            token_list.push_back(token->getText());
+        }
+        token_list.pop_back(); // remove the last token, which is <EOF>
+        return token_list;
+    }
+
+    optional<equation> parse_equation(const string& code) {
         using namespace antlr4;
         
         ANTLRInputStream input(code);
@@ -227,11 +245,11 @@ namespace ualg {
             // Retrieve the root of the custom tree
             return treeBuilder.get_equation();            
         } else {
-            return std::nullopt;
+            return nullopt;
         }
     }
 
-    std::optional<TermPtr> parse_term(const std::string& code) {
+    optional<TermPtr> parse_term(const string& code) {
         using namespace antlr4;
         
         ANTLRInputStream input(code);
@@ -252,12 +270,12 @@ namespace ualg {
             // Retrieve the root of the custom tree
             return treeBuilder.get_term();            
         } else {
-            return std::nullopt;
+            return nullopt;
         }
     }
 
 
-    std::optional<TermPos> parse_pos(const std::string& code) {
+    optional<TermPos> parse_pos(const string& code) {
         using namespace antlr4;
         
         ANTLRInputStream input(code);
@@ -278,11 +296,11 @@ namespace ualg {
             // Retrieve the root of the custom tree
             return treeBuilder.get_pos();            
         } else {
-            return std::nullopt;
+            return nullopt;
         }
     }
 
-    std::optional<subst> parse_subst(const std::string& code) {
+    optional<subst> parse_subst(const string& code) {
         using namespace antlr4;
         
         ANTLRInputStream input(code);
@@ -303,11 +321,11 @@ namespace ualg {
             // Retrieve the root of the custom tree
             return treeBuilder.get_subst();            
         } else {
-            return std::nullopt;
+            return nullopt;
         }
     }
 
-    std::optional<Signature> parse_signature(const std::string& code) {
+    optional<Signature> parse_signature(const string& code) {
         using namespace antlr4;
         
         ANTLRInputStream input(code);
@@ -328,11 +346,11 @@ namespace ualg {
             // Retrieve the root of the custom tree
             return treeBuilder.get_signature();            
         } else {
-            return std::nullopt;
+            return nullopt;
         }
     }
 
-    std::optional<Algebra> parse_alg(const std::string& code) {
+    optional<Algebra> parse_alg(const string& code) {
         using namespace antlr4;
         
         ANTLRInputStream input(code);
@@ -353,11 +371,11 @@ namespace ualg {
             // Retrieve the root of the custom tree
             return treeBuilder.get_algebra();            
         } else {
-            return std::nullopt;
+            return nullopt;
         }
     }
 
-    std::optional<proof_action> parse_proof_action(const std::string& code) {
+    optional<proof_action> parse_proof_action(const string& code) {
         using namespace antlr4;
         
         ANTLRInputStream input(code);
@@ -378,7 +396,7 @@ namespace ualg {
             // Retrieve the root of the custom tree
             return treeBuilder.get_proof_action();            
         } else {
-            return std::nullopt;
+            return nullopt;
         }
     }
 

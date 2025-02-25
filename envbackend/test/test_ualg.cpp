@@ -5,6 +5,11 @@
 using namespace std;
 using namespace ualg;
 
+TEST(TestAlg, parsing_tokens) {
+    auto actual_res = ualg::parse_tokens("&(x y) = &(y x)");
+    vector<string> expected_res = {"&", "(", "x", "y", ")", "=", "&", "(", "y", "x", ")"};
+    EXPECT_EQ(actual_res, expected_res);
+}
 
 TEST(TestAlg, parsing_term) {
     auto actual_res = ualg::parse_term("f(x y)").value();
@@ -347,6 +352,6 @@ TEST(TestAlg, apply_action) {
     SymbolKernel kernel(alg);
 
     auto eq = parse_equation("&(x y) = &(&(u u) y)").value();
-    apply_action(kernel, eq, "AX2_L2R (1) {w: |(zero zero), z: &(u v)}");
+    kernel.action(eq, "AX2_L2R (1) {w: |(zero zero), z: &(u v)}");
     EXPECT_EQ(eq, parse_equation("&(x y) = |(&(u v) |(zero zero))").value());
 }
