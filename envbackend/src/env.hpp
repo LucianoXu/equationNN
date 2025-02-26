@@ -190,7 +190,10 @@ namespace ualg {
         // This set preserves the variables that can be substituted.
         std::set<int> subst_variables;
 
+        // The encodings for input history
         std::vector<int> encodings;
+
+        // The valid next tokens
         std::set<int> valid_next_tokens;
 
         // States to determine the grammar stage
@@ -233,6 +236,10 @@ namespace ualg {
             return NextTokenMachine(*this);
         }
 
+        const std::vector<int>& get_encodings() const {
+            return encodings;
+        }
+
         const std::set<int>& get_valid_next_tokens() const {
             return valid_next_tokens;
         }
@@ -251,6 +258,14 @@ namespace ualg {
             }
             return push_token(tokenizer.get_encoding(token));
         }
+
+        /**
+         * @brief Push the string input into the machine and update the state.
+         * 
+         * @param code
+         * @return bool, whether the code is valid and successfully pushed.
+         */
+        bool push_string(std::string code);
 
         std::string to_string() const;
 

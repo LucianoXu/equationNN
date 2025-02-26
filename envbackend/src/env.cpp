@@ -539,6 +539,16 @@ namespace ualg {
         return true;
     }
 
+    bool NextTokenMachine::push_string(std::string code) {
+        auto tokens = parse_tokens(code);
+        for (const auto& token : tokens) {
+            if (!push_token(token)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     std::string NextTokenMachine::to_string() const {
         string res = "SEQ:\t\t";
         // input

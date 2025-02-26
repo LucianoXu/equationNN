@@ -1,4 +1,4 @@
-from envbackend import env
+from env import env
 from model import *
 
 def test_parse_term():
@@ -52,7 +52,7 @@ def test_tokenizer():
     alg = env.parse_alg(algebra_code)
     assert alg is not None
     tokenizer = env.Tokenizer(alg)
-    assert tokenizer.vocab == ['<PAD>', '<SOS>', '<EOS>', '(', ')', ':', '{', '}', ',', '=', '&', '|', '~', 'zero', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', 'AX1_L2R', 'AX1_R2L']
+    assert tokenizer.vocab == ['<PAD>', '<SOS>', '<EOS>', '(', ')', ':', '{', '}', ',', '=', '&', '|', '~', 'zero', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', 'SUBST', 'AX1_L2R', 'AX1_R2L']
 
     encoding = tokenizer.encode("zero = x")
     assert tokenizer.decode(encoding) == "zero = x "
@@ -122,18 +122,14 @@ def test_gen_valid_check():
     (AX1) x = &(x z)
     (AX2) &(x y) = |(&(y x) z)
     '''
-    alg = env.parse_alg(alg_code)
-    assert alg is not None
-    kernel = env.SymbolKernel(alg)
-    assert kernel is not None
-    tokenizer = env.Tokenizer(alg)
-
+    scenario = Scenario(alg_code)
+    
     # a random model
-    model_args = SmallArgs(vocab_size=tokenizer.get_vocab_size(), context_length=160)
-    model = Llama3(model_args)
+    model_args = SmallArgs(vocab_size=scenario.tokenizer.get_vocab_size(), context_length=160)
+    model = Llama3(model_args, device='cuda')
 
     for i in range(100):
-        res = generate(model, alg, "")
+        res = generate(model, scenario, "")
         print(res)
-        if not env.check_action(kernel, res):
+        if not env.check_action(scenario.kernel, res):
             raise Exception("Invalid action")
