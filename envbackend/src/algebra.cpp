@@ -363,13 +363,8 @@ namespace ualg {
 
     
     std::optional<TermPtr> RewriteRule::apply_at(TermPtr term, const TermPos& pos, const subst& spec_subst) const {
-        if (pos.size() == 0) {
-            return apply(term, spec_subst);
-        }
-
         auto new_subterm = term->get_subterm(pos);
-        auto new_subterm_res = apply_at(new_subterm, TermPos(pos.begin() + 1, pos.end()), spec_subst);
-
+        auto new_subterm_res = apply(new_subterm, spec_subst);
         if (new_subterm_res.has_value()) {
             return term->replace_at(pos, new_subterm_res.value());
         }

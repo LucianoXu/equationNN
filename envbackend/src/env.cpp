@@ -19,7 +19,7 @@ namespace ualg {
         }
     }
 
-    ACT_RESULT SymbolKernel::action(equation& eq, const proof_action& act) {
+    ACT_RESULT SymbolKernel::action(equation& eq, const proof_action& act) const {
         auto [rule_name, pos, spec_subst] = act;
         if (pos.size() == 0) {
             return FAILURE;
@@ -54,7 +54,7 @@ namespace ualg {
         }
     }
 
-    ACT_RESULT SymbolKernel::action(equation& eq, const string& action_code) {
+    ACT_RESULT SymbolKernel::action_by_code(equation& eq, const string& action_code) const {
         auto act = parse_proof_action(action_code);
         if (!act.has_value()) {
             return FAILURE;
@@ -145,6 +145,12 @@ namespace ualg {
             res += get_token(token) + " ";
         }
         return res;
+    }
+
+    bool check_action(const SymbolKernel& kernel, std::string code) {
+        proof_step step = parse_proof_step(code).value();
+        auto res = kernel.action(step.eq, step.act);
+        return res == SUCCESS;
     }
 
     void NextTokenMachine::calculate_valid_next_tokens() {

@@ -352,6 +352,6 @@ TEST(TestAlg, apply_action) {
     SymbolKernel kernel(alg);
 
     auto eq = parse_equation("&(x y) = &(&(u u) y)").value();
-    kernel.action(eq, "AX2_L2R (1) {w: |(zero zero), z: &(u v)}");
+    kernel.action_by_code(eq, "AX2_L2R (1) {w: |(zero zero), z: &(u v)}");
     EXPECT_EQ(eq, parse_equation("&(x y) = |(&(u v) |(zero zero))").value());
 }

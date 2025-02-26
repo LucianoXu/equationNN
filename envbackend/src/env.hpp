@@ -60,9 +60,9 @@ namespace ualg {
          * @param spec_subst 
          * @return ACT_RESULT 
          */
-        ACT_RESULT action(equation& eq, const proof_action& act);
+        ACT_RESULT action(equation& eq, const proof_action& act) const;
 
-        ACT_RESULT action(equation& eq, const std::string& action_code);
+        ACT_RESULT action_by_code(equation& eq, const std::string& action_code) const;
 
         /**
          * @brief Get the valid rule pos objects
@@ -128,6 +128,14 @@ namespace ualg {
 
         std::string decode(const std::vector<int>& encoding) const;
     };
+
+    /**
+     * @brief The function that checks whether the action is valid.
+     * 
+     * @param kernel
+     * @param code
+     */
+    bool check_action(const SymbolKernel& kernel, std::string code);
 
     /**
      * @brief The machine that predicts the next possible token in the algebraic manipulation.

@@ -1,10 +1,31 @@
-from .tokenizer import *
 from .model import *
+from envbackend import env
 
-PADDING_ID = token2id['<PAD>']
-EOS_ID = token2id['<EOS>']
+def constrained_sample(logits: torch.Tensor, valid_next_tokens: set[int], T: float = 1.0) -> int:
+    '''
+    Sample the next token from the logits, with temperature scaling and constraint enforcement.
+    
+    Parameters:
+    - logits: the logit values for each token
+    - valid_next_tokens: the set of valid next tokens
+    - T: the temperature coefficient to control randomness (default is 1.0)
+    '''
+    # Scale the logits by the temperature
+    logits = logits / T
 
-def generate(model, code: str, max_len: int = 256, T: float = 1.0) -> str:
+    next_token_ls = list(valid_next_tokens)
+
+    # get the possible next tokens and enforece the constraints
+    logits = logits[next_token_ls]
+
+    # Convert logits to probabilities using softmax
+    probabilities = F.softmax(logits, dim=-1)
+
+    allowed_token = int(torch.multinomial(probabilities, num_samples=1).item())
+
+    return next_token_ls[allowed_token]
+
+def generate(model, algebra: env.Algebra, code: str, max_len: int = 256, T: float = 1.0) -> str:
     '''
     Generate code using the model, with temperature scaling.
     
@@ -15,33 +36,53 @@ def generate(model, code: str, max_len: int = 256, T: float = 1.0) -> str:
     - T: the temperature coefficient to control randomness (default is 1.0)
     '''
     device = model.device
-    encoding = torch.tensor([tok_encode("<SOS> " +code)], device=device)
+
+    # prepare the tokenizer and the next token machine
+    tokenizer = env.Tokenizer(algebra)
+    ntok_machine = env.NextTokenMachine(algebra)
+
+    EOS_ID = tokenizer.get_encoding('<EOS>')
+    encodings = tokenizer.encode("<SOS> " + code)
+
+    encodings_tensor = torch.tensor([encodings], device=device)
+
+    # try to push the encoded code to the next token machine
+    for encoding in encodings[1:]:
+        ntok_machine.push_token(encoding)
 
     output = []
     
     # autoregressive generation
     with torch.no_grad():
         for i in range(max_len):
-            logits = model(encoding)
 
-            # Scale the logits by the temperature
-            logits = logits[0, -1, :] / T
+            # get the possible next tokens and enforece the constraints
+            next_tokens = ntok_machine.get_valid_next_tokens()
+            if len(next_tokens) == 0:
+                raise Exception("No valid next tokens found. Generated code: " + tokenizer.decode(output))
             
-            # Convert logits to probabilities using softmax
-            probabilities = F.softmax(logits, dim=-1)
+            elif len(next_tokens) == 1:
+                # if there is only one possible next token, no need to sample
+                next_token = next_tokens.pop()
+            
+            else:
+                # sample the next token
+                logits = model(encodings_tensor)
+                logits = logits[0, -1, :]
+                next_token = constrained_sample(logits, next_tokens, T)
 
-            # Sample the next token from the probability distribution
-            next_token = torch.multinomial(probabilities, num_samples=1).item()
-
+            if not ntok_machine.push_token(next_token):
+                raise Exception("Invalid token pushed to the next token machine.")
             output.append(next_token)
 
-            if output[-1] == token2id['<EOS>']:
+            if output[-1] == EOS_ID:
                 # remove the <EOS> token
                 output = output[:-1]
                 break
-            encoding = torch.cat((encoding, torch.tensor([[output[-1]]], device = device)), dim=1)
+            encodings_tensor = torch.cat((encodings_tensor, torch.tensor([[output[-1]]], device = device)), dim=1)
 
-    return tok_decode(output)
+    return tokenizer.decode(output)
+
 
 def batch_predict(model, beams: list[list[int]], context_length: int = 256, T: float = 1.0) -> tuple[list[int], torch.Tensor]:
     '''

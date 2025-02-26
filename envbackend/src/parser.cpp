@@ -400,4 +400,29 @@ namespace ualg {
         }
     }
 
+
+    optional<proof_step> parse_proof_step(const string& code) {
+        using namespace antlr4;
+        
+        ANTLRInputStream input(code);
+        ENVBACKENDLexer lexer(&input);
+        CommonTokenStream tokens(&lexer);
+
+        tokens.fill();
+        
+        ENVBACKENDParser parser(&tokens);
+        tree::ParseTree *tree = parser.proofstep();
+
+        // Create the tree builder
+        ENVBACKENDTermBuilder treeBuilder;
+        // Check for errors
+        if (parser.getNumberOfSyntaxErrors() == 0) {
+            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
+
+            // Retrieve the root of the custom tree
+            return treeBuilder.get_proof_step();            
+        } else {
+            return nullopt;
+        }
+    }
 } // namespace ualg

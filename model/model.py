@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 import torch
 import torch.nn.functional as F
 from torch import nn
-
+from envbackend import env
 
 @dataclass
 class ModelArgs:
@@ -14,12 +14,13 @@ class ModelArgs:
     n_layers: int = 32
     n_heads: int = 16
     n_kv_heads: int = 8
-    vocab_size: int = 0
     d_ff: int = 2048
     norm_eps: float = 1e-5
     rope_theta: float = 5000.0
 
-    context_length: int = 160
+    # these parameters should be set by the user
+    vocab_size: int = 0
+    context_length: int = 0
 
 class RMSNorm(torch.nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6, device: str = 'cpu'):

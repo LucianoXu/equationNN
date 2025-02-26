@@ -44,12 +44,13 @@ PYBIND11_MODULE(envbackend, m) {
 
     py::class_<SymbolKernel>(m, "SymbolKernel")
         .def(py::init<const Algebra&>())
-        .def("action", py::overload_cast<equation&, const proof_action&>(&SymbolKernel::action))
-        .def("action_by_code", py::overload_cast<equation&, const string&>(&SymbolKernel::action));
+        .def("action", &SymbolKernel::action)
+        .def("action_by_code", &SymbolKernel::action_by_code);
 
     py::class_<Tokenizer>(m, "Tokenizer")
         .def(py::init<const Algebra&>())
         .def_property_readonly("vocab", &Tokenizer::get_vocab)
+        .def("get_vocab_size", &Tokenizer::get_vocab_size)
         .def("get_token", &Tokenizer::get_token)
         .def("get_encoding", &Tokenizer::get_encoding)
         .def("get_pos_int_encoding", &Tokenizer::get_pos_int_encoding)
@@ -85,4 +86,5 @@ PYBIND11_MODULE(envbackend, m) {
     m.def("parse_term", &parse_term, "A function that parses the term code.");
     m.def("parse_equation", &parse_equation, "A function that parses the equation code.");
     m.def("parse_alg", &parse_alg, "A function that parses the algebra code.");
+    m.def("check_action", &check_action, "A function that checks whether the action is valid.");
 }

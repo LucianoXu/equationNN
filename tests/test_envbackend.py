@@ -1,4 +1,5 @@
-from build.Debug.envbackend import envbackend as env
+from envbackend import env
+from model import *
 
 def test_parse_term():
     term = env.parse_term("f(a g(b c))")
@@ -11,15 +12,20 @@ def test_term_construct():
 
 def test_term_get_head():
     term = env.parse_term("f(a g(b c))")
+    assert term is not None
     assert term.head == "f"
 
 def test_term_replace_term():
     term = env.parse_term("f(a g(b c))")
-    new_term = term.replace_term(env.parse_term("g(b c)"), term)
+    assert term is not None
+    pattern = env.parse_term("g(b c)")
+    assert pattern is not None
+    new_term = term.replace_term(pattern, term)
     assert new_term == env.parse_term("f(a f(a g(b c)))")
 
 def test_get_subterm():
     term = env.parse_term("f(a g(b c))")
+    assert term is not None
     subterm = term.get_subterm([1, 1])
     assert subterm == env.parse_term("c")
 
@@ -44,6 +50,7 @@ def test_parse_alg():
 
 def test_tokenizer():
     alg = env.parse_alg(algebra_code)
+    assert alg is not None
     tokenizer = env.Tokenizer(alg)
     assert tokenizer.vocab == ['<PAD>', '<SOS>', '<EOS>', '(', ')', ':', '{', '}', ',', '=', '&', '|', '~', 'zero', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', 'AX1_L2R', 'AX1_R2L']
 
@@ -52,6 +59,7 @@ def test_tokenizer():
 
 def test_next_token_machine():
     alg = env.parse_alg(algebra_code)
+    assert alg is not None
     machine = env.NextTokenMachine(alg)
     assert machine.push_token("zero")
     assert machine.push_token("=")
@@ -60,6 +68,7 @@ def test_next_token_machine():
 
 def test_next_token_machine_copy():
     alg = env.parse_alg(algebra_code)
+    assert alg is not None
     machine = env.NextTokenMachine(alg)
     machine_copy = machine.copy()
 
@@ -91,8 +100,40 @@ def test_apply_action():
         (AX2) &(x y) = |(z w)
     '''
     alg = env.parse_alg(algebra_code)
+    assert alg is not None
     kernel = env.SymbolKernel(alg)
     eq = env.parse_equation("&(x y) = &(&(u u) y)")
+    assert eq is not None
     kernel.action_by_code(eq, "AX2_L2R (1) {w: |(zero zero), z: &(u v)}")
     assert eq == env.parse_equation("&(x y) = |(&(u v) |(zero zero))")
     
+def test_gen_valid_check():
+    alg_code = '''
+    [function]
+    & : 2
+    | : 2
+    ~ : 1
+    zero : 0
+
+    [variable]
+    x y z u v w
+
+    [axiom]
+    (AX1) x = &(x z)
+    (AX2) &(x y) = |(&(y x) z)
+    '''
+    alg = env.parse_alg(alg_code)
+    assert alg is not None
+    kernel = env.SymbolKernel(alg)
+    assert kernel is not None
+    tokenizer = env.Tokenizer(alg)
+
+    # a random model
+    model_args = SmallArgs(vocab_size=tokenizer.get_vocab_size(), context_length=160)
+    model = Llama3(model_args)
+
+    for i in range(100):
+        res = generate(model, alg, "")
+        print(res)
+        if not env.check_action(kernel, res):
+            raise Exception("Invalid action")

@@ -78,4 +78,13 @@ namespace ualg {
      */
     std::optional<proof_action> parse_proof_action(const std::string& code);
 
+
+    /**
+     * @brief Parse the given code.
+     * 
+     * @param code 
+     * @return std::optional<proof_step> 
+     */
+    std::optional<proof_step> parse_proof_step(const std::string& code);
+
 } // namespace ualg
