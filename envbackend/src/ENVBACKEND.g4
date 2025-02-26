@@ -7,7 +7,9 @@ grammar ENVBACKEND;
 proofstep : equation ':' proofaction;
 
 // The action grammar
-proofaction : NAME pos subst;
+proofaction : NAME pos subst    # RuleAction
+            | 'SUBST' NAME expr # SubstAction
+            ;
 
 ////////////////////////////////////////////////
 // Algebra

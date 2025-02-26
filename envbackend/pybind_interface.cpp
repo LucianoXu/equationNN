@@ -73,7 +73,7 @@ PYBIND11_MODULE(envbackend, m) {
         .value("EQ", NextTokenMachine::State::EQ)
         .value("RHS", NextTokenMachine::State::RHS)
         .value("COLON", NextTokenMachine::State::COLON)
-        .value("RULE_NAME", NextTokenMachine::State::RULE_NAME)
+        .value("ACT_NAME", NextTokenMachine::State::ACT_NAME)
         .value("POS", NextTokenMachine::State::POS)
         .value("SUBST", NextTokenMachine::State::SUBST)
         .value("SUBST_TERM", NextTokenMachine::State::SUBST_TERM)

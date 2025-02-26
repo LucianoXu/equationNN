@@ -149,12 +149,18 @@ namespace ualg {
             EQ,
             RHS,
             COLON,
-            RULE_NAME,
+
+            ACT_NAME,
+            // The rule branch
             POS,
             SUBST,
             SUBST_TERM,
             SUBST_COLON,
             COMMA,
+            // The subst branch
+            SUBST_ACT_NAME,
+            SUBST_ACT_TERM,
+
             EOS,
             HALT
         };
@@ -180,6 +186,9 @@ namespace ualg {
 
         // This mapping preserves the required variable tokens for each rule.
         std::map<int, std::set<int>> required_vars_map;
+
+        // This set preserves the variables that can be substituted.
+        std::set<int> subst_variables;
 
         std::vector<int> encodings;
         std::set<int> valid_next_tokens;

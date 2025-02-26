@@ -21,6 +21,18 @@ namespace ualg {
 
     ACT_RESULT SymbolKernel::action(equation& eq, const proof_action& act) const {
         auto [rule_name, pos, spec_subst] = act;
+
+        // if it is a substitution
+        if (rule_name == "SUBST") {
+            if (pos.size() != 0) {
+                return FAILURE;
+            }
+            eq.lhs = apply_subst(eq.lhs, spec_subst);
+            eq.rhs = apply_subst(eq.rhs, spec_subst);
+            return SUCCESS;
+        }
+
+        // if it is a normal rule
         if (pos.size() == 0) {
             return FAILURE;
         }
@@ -113,7 +125,8 @@ namespace ualg {
             vocab.push_back(::to_string(i));
         }
 
-        // The rewrite rule names
+        // The SUBST action and rewrite rule names
+        vocab.push_back("SUBST");
         auto kernel = SymbolKernel(algebra);
         for (const auto& name : kernel.get_rule_names()) {
             vocab.push_back(name);
@@ -159,6 +172,7 @@ namespace ualg {
         case LHS:
         case RHS:
         case SUBST_TERM:
+        case SUBST_ACT_TERM:
             if (parenthesis == NONE) {
                 // Add function symbols and variables
                 valid_next_tokens = func_symbols;
@@ -181,9 +195,12 @@ namespace ualg {
             valid_next_tokens = {tokenizer.get_encoding(":")};
             break;
 
-        case RULE_NAME:
+        case ACT_NAME:
             for (const auto& rule : *p_current_rule_pos_tree) {
                 valid_next_tokens.insert(rule.choice);
+            }
+            if (subst_variables.size() > 0) {
+                valid_next_tokens.insert(tokenizer.get_encoding("SUBST"));
             }
             break;
             
@@ -221,6 +238,10 @@ namespace ualg {
         
         case COMMA:
             valid_next_tokens = {tokenizer.get_encoding(",")};
+            break;
+
+        case SUBST_ACT_NAME:
+            valid_next_tokens = subst_variables;
             break;
 
         case EOS:
@@ -323,6 +344,7 @@ namespace ualg {
         func_symbols = other.func_symbols;
         var_symbols = other.var_symbols;
         required_vars_map = other.required_vars_map;
+        subst_variables = other.subst_variables;
         encodings = other.encodings;
         valid_next_tokens = other.valid_next_tokens;
         state = other.state;
@@ -344,11 +366,14 @@ namespace ualg {
 
         std::vector<CandidateTree> temp;
         string eq_code = "";
+        equation eq;
+        set<string> lhs_vars, rhs_vars;
 
         switch (state) {
         case LHS:
         case RHS:
         case SUBST_TERM:
+        case SUBST_ACT_TERM:
             if (parenthesis == OPENING || parenthesis == CLOSING) {
                 parenthesis = NONE;
             }
@@ -374,6 +399,7 @@ namespace ualg {
                 parenthesis = CLOSING;
             }
 
+            // transform to the next state
             if (parenthesis == NONE && term_gen_stack.empty()) {
                 if (state == LHS) {
                     state = EQ;
@@ -390,6 +416,12 @@ namespace ualg {
                         state = COMMA;
                     }
                 }
+                else if (state == SUBST_ACT_TERM) {
+                    state = EOS;
+                }
+                else {
+                    throw std::runtime_error("Invalid state.");
+                }
             }
 
             break;
@@ -399,36 +431,53 @@ namespace ualg {
             break;
 
         case COLON:
-            state = RULE_NAME;
+            state = ACT_NAME;
 
-            // get the valid rule names
+            // get the equation
             for (int i = 1; i < encodings.size()-1; ++i) {
                 eq_code += tokenizer.get_token(encodings[i]) + " ";
             }
+            eq = parse_equation(eq_code).value();
+
+            // get the valid rule names
             parse_valid_rule_pos_tree(
-                kernel.get_valid_rule_pos(parse_equation(eq_code).value())
+                kernel.get_valid_rule_pos(eq)
             );
 
             p_current_rule_pos_tree = &valid_rule_pos_tree;
 
+            // calculate the possible variables to be substituted
+            subst_variables.clear();
+            lhs_vars = eq.lhs->get_variables(sig);
+            rhs_vars = eq.rhs->get_variables(sig);
+            for (const auto& var : lhs_vars) {
+                subst_variables.insert(tokenizer.get_encoding(var));
+            }
+            for (const auto& var : rhs_vars) {
+                subst_variables.insert(tokenizer.get_encoding(var));
+            }
             break;
 
-        case RULE_NAME:
-            // get the choice and swap
-            for (auto& tree : *p_current_rule_pos_tree) {
-                if (tree.choice == token) {
-                    p_current_rule_pos_tree = &tree.children;
-                    break;
-                }
+        case ACT_NAME:
+            if (token == tokenizer.get_encoding("SUBST")) {
+                state = SUBST_ACT_NAME;
             }
+            else {
+                // get the choice
+                for (auto& tree : *p_current_rule_pos_tree) {
+                    if (tree.choice == token) {
+                        p_current_rule_pos_tree = &tree.children;
+                        break;
+                    }
+                }
 
-            // calculate the remaining variables
-            remaining_vars = required_vars_map[token];
+                // calculate the remaining variables
+                remaining_vars = required_vars_map[token];
 
-            state = POS;
-            parenthesis = OPENING;
-            break;   
-
+                state = POS;
+                parenthesis = OPENING;
+            }
+            break;
         case POS:
             if (parenthesis == OPENING) {
                 parenthesis = NONE;
@@ -472,6 +521,10 @@ namespace ualg {
 
         case COMMA:
             state = SUBST;
+            break;
+
+        case SUBST_ACT_NAME:
+            state = SUBST_ACT_TERM;
             break;
 
         case EOS:

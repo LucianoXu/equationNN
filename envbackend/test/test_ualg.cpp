@@ -333,6 +333,51 @@ TEST(TestAlg, next_token_machine1) {
     EXPECT_EQ(machine.get_state(), NextTokenMachine::HALT);
 }
 
+
+TEST(TestAlg, next_token_machine2) {
+
+    Algebra alg = parse_alg(R"(
+        [function]
+        & : 2
+        | : 2
+        ~ : 1
+        zero : 0
+
+        [variable]
+        x y z u v w
+
+        [axiom]
+        (AX1) &(x y) = |(&(y x) z)
+        (AX2) &(x y) = |(z w)
+    )").value();
+
+    auto machine = NextTokenMachine(alg);
+
+    vector<string> seq = {"&", "(", "x", "y", ")", "=", "&", "(", "&", "(", "u", "u", ")", "y", ")", ":", "SUBST", "y", "|", "(", "zero", "zero", ")", "<EOS>"};
+    
+    while (machine.get_state() != NextTokenMachine::HALT) {
+        cout << machine.to_string() << endl;
+
+        string token;
+
+        // use predefined sequence
+        if (seq.size() == 0) {
+            // input a string
+            break;
+        }
+        else {
+            token = seq[0];
+            seq.erase(seq.begin());
+        }
+        
+        if (!machine.push_token(token)) {
+            cout << "Invalid token." << endl;
+        }
+    }
+
+    EXPECT_EQ(machine.get_state(), NextTokenMachine::HALT);
+}
+
 TEST(TestAlg, apply_action) {
     Algebra alg = parse_alg(R"(
         [function]
@@ -354,4 +399,27 @@ TEST(TestAlg, apply_action) {
     auto eq = parse_equation("&(x y) = &(&(u u) y)").value();
     kernel.action_by_code(eq, "AX2_L2R (1) {w: |(zero zero), z: &(u v)}");
     EXPECT_EQ(eq, parse_equation("&(x y) = |(&(u v) |(zero zero))").value());
+}
+
+TEST(TestAlg, apply_action_subst) {
+    Algebra alg = parse_alg(R"(
+        [function]
+        & : 2
+        | : 2
+        ~ : 1
+        zero : 0
+
+        [variable]
+        x y z u v w
+
+        [axiom]
+        (AX1) &(x y) = |(&(y x) z)
+        (AX2) &(x y) = |(z w)
+    )").value();
+
+    SymbolKernel kernel(alg);
+
+    auto eq = parse_equation("&(x y) = &(&(u u) y)").value();
+    kernel.action_by_code(eq, "SUBST y &(x x)");
+    EXPECT_EQ(eq, parse_equation("&(x &(x x)) = &(&(u u) &(x x))").value());
 }

@@ -26,7 +26,9 @@ namespace ualg {
 
         void exitProofstep(ENVBACKENDParser::ProofstepContext *ctx) override;
 
-        void exitProofaction(ENVBACKENDParser::ProofactionContext *ctx) override;
+        void exitRuleAction(ENVBACKENDParser::RuleActionContext *ctx) override;
+
+        void exitSubstAction(ENVBACKENDParser::SubstActionContext *ctx) override;
 
         void exitAlg(ENVBACKENDParser::AlgContext *ctx) override;
 
@@ -110,10 +112,15 @@ namespace ualg {
         return step;
     }
 
-    void ENVBACKENDTermBuilder::exitProofaction(ENVBACKENDParser::ProofactionContext *ctx) {
+    void ENVBACKENDTermBuilder::exitRuleAction(ENVBACKENDParser::RuleActionContext *ctx) {
         act = {ctx->NAME()->getText(), pos_stack.top(), subst_stack.top()};
         pos_stack.pop();
         subst_stack.pop();
+    }
+
+    void ENVBACKENDTermBuilder::exitSubstAction(ENVBACKENDParser::SubstActionContext *ctx) {
+        act = {"SUBST", TermPos(), subst{{ctx->NAME()->getText(), term_stack.top()}}};
+        term_stack.pop();
     }
 
     void ENVBACKENDTermBuilder::exitProofstep(ENVBACKENDParser::ProofstepContext *ctx) {
