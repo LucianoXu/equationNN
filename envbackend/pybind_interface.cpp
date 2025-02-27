@@ -30,13 +30,20 @@ PYBIND11_MODULE(envbackend, m) {
 
     py::class_<equation>(m, "Equation")
         .def(py::init<TermPtr, TermPtr>())
+        .def_readwrite("lhs", &equation::lhs)
+        .def_readwrite("rhs", &equation::rhs)
         .def("__str__", &equation::to_string)
         .def("__eq__", &equation::operator==)
         .def("__repr__", &equation::to_repr);
 
-    py::class_<Signature, shared_ptr<Signature>>(m, "Signature");
+    py::class_<Signature, shared_ptr<Signature>>(m, "Signature")
+        .def_property_readonly("func_symbols", &Signature::get_func_symbols)
+        .def_property_readonly("variables", &Signature::get_variables)
+        .def("__str__", &Signature::to_string);
+
     py::class_<Algebra, shared_ptr<Algebra>>(m, "Algebra")
-        .def_property_readonly("signature", &Algebra::get_signature);
+        .def_property_readonly("signature", &Algebra::get_signature)
+        .def("__str__", &Algebra::to_string);
 
     py::enum_<ACT_RESULT>(m, "ACT_RESULT")
         .value("FAILURE", ACT_RESULT::FAILURE)
@@ -67,6 +74,7 @@ PYBIND11_MODULE(envbackend, m) {
         .def_property_readonly("valid_next_tokens", &NextTokenMachine::get_valid_next_tokens)
         .def("push_token", py::overload_cast<int>(&NextTokenMachine::push_token))
         .def("push_token", py::overload_cast<string>(&NextTokenMachine::push_token))
+        .def("push_encodings", &NextTokenMachine::push_encodings)
         .def("push_string", &NextTokenMachine::push_string)
         .def_property_readonly("state", &NextTokenMachine::get_state)
         .def("__str__", &NextTokenMachine::to_string);

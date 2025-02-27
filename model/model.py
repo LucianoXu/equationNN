@@ -352,7 +352,7 @@ class Llama3(nn.Module):
         The input sequence tokens are able to attend to each other within the input sequence. The attention for rest of the tokens follow the causal mask.
         '''
         # check sequence length
-        assert tokens.shape[1] <= self.model_args.context_length, "sequence length exceeds context length"
+        assert tokens.shape[1] <= self.model_args.context_length, f"sequence length {tokens.shape[1]} exceeds context length {self.model_args.context_length}"
         batch_size, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
         freqs_cis = self.freqs_cis[:seqlen]

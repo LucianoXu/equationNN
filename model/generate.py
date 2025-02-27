@@ -131,7 +131,7 @@ def batch_predict(model, scenario: Scenario, machines: list[env.NextTokenMachine
 
 
 
-def batch_generation(model, scenario: Scenario, beams: list[str], context_length: int = 256, T: float = 1.0) -> tuple[list[str], torch.Tensor]:
+def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]|list[env.NextTokenMachine], context_length: int = 256, T: float = 1.0) -> tuple[list[str], torch.Tensor]:
     '''
     Generate the output for each beam using the model, with temperature scaling.
 
@@ -139,13 +139,27 @@ def batch_generation(model, scenario: Scenario, beams: list[str], context_length
     '''
 
     # prepare the next token machines
-    machine = env.NextTokenMachine(scenario.alg)
-    
-    machines = {i:machine.copy() for i,beam in enumerate(beams)}
+    if isinstance(beams[0], str):
+        machine = env.NextTokenMachine(scenario.alg)
+        
+        machines = {i:machine.copy() for i,beam in enumerate(beams)}
 
-    for i, beam in enumerate(beams):
-        if not machines[i].push_string(beam):
-            raise Exception("Invalid code pushed to the next token machine: " + beam)
+        for i, beam in enumerate(beams):
+            assert isinstance(beam, str)
+            if not machines[i].push_string(beam):
+                raise Exception("Invalid code pushed to the next token machine: " + beam)
+    elif isinstance(beams[0], list):
+        machine = env.NextTokenMachine(scenario.alg)
+        
+        machines = {i:machine.copy() for i,beam in enumerate(beams)}
+
+        for i, beam in enumerate(beams):
+            assert isinstance(beam, list)
+            if not machines[i].push_encodings(beam):
+                raise Exception("Invalid code pushed to the next token machine: " + str(beam))
+    else:
+        machines = {i:beam for i,beam in enumerate(beams)}  # type: ignore
+        machines : dict[int, env.NextTokenMachine]
     
     input_lens = {i:len(machines[i].encodings) for i in machines}
 
@@ -165,18 +179,24 @@ def batch_generation(model, scenario: Scenario, beams: list[str], context_length
             # get the real index in the batch
             idx = indices[i]
 
-            # update the log probabilities
-            acc_log_probs[idx] += log_probabilities[i]
-
-            # finish the beams that predict <EOS>
-            if next_tokens[i] == scenario.EOS_ID or len(machines[idx].encodings) + 1 == context_length:
+            # check if the beam is too long
+            if len(machines[idx].encodings) >= context_length:
                 outputs[idx] = scenario.tokenizer.decode(machines[idx].encodings[input_lens[idx]:])
                 del machines[idx]
 
-
-            # update the beams that are not finished
             else:
-                machines[idx].push_token(next_tokens[i])
+                # update the log probabilities
+                acc_log_probs[idx] += log_probabilities[i]
+
+                # finish the beams that predict <EOS>
+                if next_tokens[i] == scenario.EOS_ID:
+                    outputs[idx] = scenario.tokenizer.decode(machines[idx].encodings[input_lens[idx]:])
+                    del machines[idx]
+
+
+                # update the beams that are not finished
+                else:
+                    machines[idx].push_token(next_tokens[i])
 
     return outputs, acc_log_probs
 

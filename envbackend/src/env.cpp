@@ -539,6 +539,15 @@ namespace ualg {
         return true;
     }
 
+    bool NextTokenMachine::push_encodings(const vector<int>& encodings) {
+        for (int encoding : encodings) {
+            if (!push_token(encoding)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     bool NextTokenMachine::push_string(std::string code) {
         auto tokens = parse_tokens(code);
         for (const auto& token : tokens) {

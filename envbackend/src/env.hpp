@@ -260,6 +260,14 @@ namespace ualg {
         }
 
         /**
+         * @brief Push the input encodings into the machine and update the state.
+         * 
+         * @param code
+         * @return bool, whether the code is valid and successfully pushed.
+         */
+        bool push_encodings(const std::vector<int>& encodings);
+
+        /**
          * @brief Push the string input into the machine and update the state.
          * 
          * @param code

@@ -5,6 +5,16 @@ def test_parse_term():
     term = env.parse_term("f(a g(b c))")
     assert str(term) == "f(a g(b c))"
 
+def test_term_eq():
+    term1 = env.parse_term("x")
+    assert term1 is not None
+    term2 = env.parse_term("x")
+    assert term2 is not None
+    eq = env.Equation(term1, term2)
+    # notice that eq.lhs and eq.rhs are not pointers. So the following assertion is correct.
+    assert eq.lhs == eq.rhs
+
+
 def test_term_construct():
     term1 = env.Term("f", [env.Term("a"), env.Term("g", [env.Term("b"), env.Term("c")])])
     term2 = env.parse_term("f(a g(b c))")
