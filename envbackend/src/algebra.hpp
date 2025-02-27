@@ -144,6 +144,12 @@ namespace ualg{
         TermPtr lhs;
         TermPtr rhs;
 
+        equation() = default;
+
+        equation(TermPtr _lhs, TermPtr _rhs) : lhs(_lhs), rhs(_rhs) {}
+
+        equation(const equation& other) : lhs(other.lhs), rhs(other.rhs) {}
+
         std::string to_string() const {
             return lhs->to_string() + " = " + rhs->to_string();
         }

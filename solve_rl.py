@@ -25,25 +25,29 @@ class SolveEnv:
     def state(self) -> str:
         return str(self.problem) + " : "
     
-    def step(self, action: str) -> float:
+    def step(self, action: str, state_len_limit: int) -> float:
+        '''
+        Notice that the state length limit include the '<SOS>' token and the ':' token.
+        '''
 
-        res = self.scenario.kernel.action_by_code(self.problem, action)
+        temp_eq = env.Equation(self.problem)
 
-        if res == env.ACT_RESULT.FAILURE:
+        res = self.scenario.kernel.action_by_code(temp_eq, action)
+
+        if res != env.ACT_RESULT.SUCCESS:
             return -1.
+
+        # check whether the state length limit is reached
+        state_len = len(self.scenario.tokenizer.encode(str(temp_eq))) + 2
+        if state_len > state_len_limit:
+            return -1.
+        
+        self.problem = temp_eq
 
         return -1.
 
-def process_env(i, shared_envs: list[SolveEnv], action):
-    '''
-    helping function for parallel processing
-    '''
-    env = shared_envs[i]
-    reward = env.step(action)
-    shared_envs[i] = env
-    return i, reward
 
-def solve_group(model, scenario, problems: list[str], step_limit: int, context_length: int, T: float) -> list[Trace]:
+def solve_group(model, scenario, problems: list[str], step_limit: int, state_len_limit: int, context_length: int, T: float) -> list[Trace]:
     '''
     Solve a group of proof kernels for parallel training and evaluation.
     '''
@@ -63,7 +67,7 @@ def solve_group(model, scenario, problems: list[str], step_limit: int, context_l
     for _ in range(step_limit):
 
         # check the finished envs
-        temp_envs = []
+        temp_envs : list[SolveEnv] = []
         for i in range(len(envs)):
             if envs[i].problem.lhs == envs[i].problem.rhs:
                 env_idx_mapping = env_idx_mapping[:i] + env_idx_mapping[i+1:]
@@ -85,15 +89,12 @@ def solve_group(model, scenario, problems: list[str], step_limit: int, context_l
         batch = [env.state for env in envs]
         actions, log_probs = batch_generation(model, scenario, batch, context_length, T)
 
-        reward_results = []
+        reward_results : list[float] = []
         for i in range(len(envs)):
-            # sometimes there will be empty actions
-            if actions[i] == "":
-                # raise Exception("Invalid action generated.")
-                pass
-            reward_results.append((i, envs[i].step(actions[i])))
+            # the generation may be unfinished and the C++ parser will report an warning
+            reward_results.append(envs[i].step(actions[i], state_len_limit))
 
-        for i, reward in reward_results:
+        for i, reward in enumerate(reward_results):
             traces[env_idx_mapping[i]].append((actions[i], log_probs[i], reward))
 
         progress_bar.update(1)
@@ -102,10 +103,11 @@ def solve_group(model, scenario, problems: list[str], step_limit: int, context_l
 
 
 
-def gen_example_group(model, 
+def gen_group(model, 
                       scenario: Scenario,
                       batch_size: int = 10, 
                       step_limit: int = 20, 
+                      state_len_limit: int = 128,
                       context_length: int = 256, 
                       T: float = 1.0) -> list[Trace]:
     '''
@@ -141,11 +143,12 @@ def gen_example_group(model,
         batch = [env.state for env in envs]
         actions, log_probs = batch_generation(model, scenario, batch, context_length, T)
 
-        reward_results = []
+        reward_results : list[float] = []
         for i in range(len(envs)):
-            reward_results.append((i, envs[i].step(actions[i])))
+            # the generation may be unfinished and the C++ parser will report an warning
+            reward_results.append(envs[i].step(actions[i], state_len_limit))
 
-        for i, reward in reward_results:
+        for i, reward in enumerate(reward_results):
             traces[i].append((actions[i], log_probs[i], reward))
 
         progress_bar.update(1)
@@ -167,6 +170,7 @@ def rl_train(
         gen_model: Llama3,
         model: Llama3,
         scenario: Scenario,
+        state_len_limit: int,
         context_length: int,
 
         ckpt_folder: str,
@@ -243,11 +247,11 @@ def rl_train(
                     # STEP 1: sample the traces
                     # generate the problems
                     with torch.no_grad():
-                        gen_traces = gen_example_group(gen_model, scenario, batch_size, rl_gen_step_limit, context_length, rl_temperature)
+                        gen_traces = gen_group(gen_model, scenario, batch_size, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
                     
                     equations = [str(trace.equation) for trace in gen_traces]
 
-                    sol_traces = solve_group(model, scenario, equations, rl_sol_step_limit, context_length, rl_temperature)
+                    sol_traces = solve_group(model, scenario, equations, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
 
                     ###########################
 
@@ -360,7 +364,7 @@ if __name__ == '__main__':
 
     scenario = Scenario(alg_code)
 
-    args = SmallArgs(vocab_size=scenario.tokenizer.get_vocab_size(), context_length=160)
+    args = SmallArgs(vocab_size=scenario.tokenizer.get_vocab_size(), context_length=256)
     device = 'cuda'
 
     rl_train(
@@ -373,6 +377,7 @@ if __name__ == '__main__':
             device=device
         ),
         scenario = scenario,
+        state_len_limit = 160,
         context_length = args.context_length,
 
         ckpt_folder = "./ckpt/Magma",
@@ -387,7 +392,7 @@ if __name__ == '__main__':
         batch_size = 192,
         accumulation_step = 1,
         rl_gen_step_limit=6,
-        rl_sol_step_limit=12,
+        rl_sol_step_limit=30,
         rl_temperature=0.6,
 
         save_interval=10000

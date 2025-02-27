@@ -30,6 +30,7 @@ PYBIND11_MODULE(envbackend, m) {
 
     py::class_<equation>(m, "Equation")
         .def(py::init<TermPtr, TermPtr>())
+        .def(py::init<const equation&>())
         .def_readwrite("lhs", &equation::lhs)
         .def_readwrite("rhs", &equation::rhs)
         .def("__str__", &equation::to_string)
