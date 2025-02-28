@@ -1,3 +1,3 @@
 from .model import *
-from .args import SmallArgs
+from .args import *
 from .generate import *

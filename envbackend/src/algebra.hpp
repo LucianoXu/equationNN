@@ -150,6 +150,13 @@ namespace ualg{
 
         equation(const equation& other) : lhs(other.lhs), rhs(other.rhs) {}
 
+        std::set<std::string> get_variables(const Signature& sig) const {
+            auto lhs_vars = lhs->get_variables(sig);
+            auto rhs_vars = rhs->get_variables(sig);
+            lhs_vars.insert(rhs_vars.begin(), rhs_vars.end());
+            return lhs_vars;
+        }
+
         std::string to_string() const {
             return lhs->to_string() + " = " + rhs->to_string();
         }

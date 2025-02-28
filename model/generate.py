@@ -196,7 +196,8 @@ def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]
 
                 # update the beams that are not finished
                 else:
-                    machines[idx].push_token(next_tokens[i])
+                    if not machines[idx].push_token(next_tokens[i]):
+                        raise Exception(f"Invalid token {next_tokens[i]} pushed to the next token machine. Machine state:\n{machines[idx].state}")
 
     return outputs, acc_log_probs
 

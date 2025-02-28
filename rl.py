@@ -1,110 +1,164 @@
-# rl training for higher interestingness
-
-from pyualg import Term
 from model import *
-from scenario import RULE_NAMES_INV, parser, signature, forbidden_heads
+from env import env, Scenario
 import multiprocessing as mp
 
-from evaluation import _test_intere
+class Trace:
+    def __init__(self, equation: env.Equation, steps: list[tuple[str, torch.Tensor, float]]):
+        self.equation = equation # the final equation
+        self.steps = steps
 
-import json
+    def __str__(self):
+        return str(self.equation) + " : " + str(self.steps)
 
-device = json.load(open('config.json'))['backend']
+def interestingness(equation: env.Equation, proof_step: int) -> float:
+    '''
+    Calculate the interestingness of the equation.
+    '''
+    size = equation.lhs.get_term_size() + equation.rhs.get_term_size() + 1
+    return 20 * proof_step / size
 
 class GenEnv:
-    error_reward = -0.05
-    def __init__(self, problem : Term, timeout = 10.):
-        self.problem = problem
-        
-        # note that the reward is the difference between the interestingness of the current equation and the last equation. starting from 0.
-        self.last_interestingness = 0.
+    '''
+    The environment for the equation generation task.
 
-        self.timeout = timeout
+    The reward is defined as follows:
+    - An instant reward of the current interestingness is given as the reward.
+    - If any step tries to exceed the state length limit, a penalty of -1 is given.
+    '''
+    def __init__(self, scenario: Scenario, problem : env.Equation):
+        self.problem = problem
+        self.scenario = scenario
 
     @property
     def state(self) -> str:
-        return self.problem.sig_str(signature) + " : "
-
-    def step(self, action: str) -> float:
-
-        # parse the action
-        encoding = tok_encode(action)
-
-        # try to apply the command. any exception will be caught and return
-        try:
-            # find the rule in RULE_NAME_INV
-            if id2token[encoding[0]] not in RULE_NAMES_INV:
-                return self.error_reward
-            
-            rule = RULE_NAMES_INV[id2token[encoding[0]]]
-
-            # find the first token2id['{'] element in encoding
-            subst_start_id = encoding.index(token2id['{'])
-
-            
-            pos = tuple(int(id2token[id]) for id in encoding[1:subst_start_id])
-
-            subst = parser.parse_subst(tok_decode(encoding[subst_start_id:]))
-
-            res = self.problem.apply_at(rule, signature, pos, subst, forbidden_heads)
-
-        except Exception as e:
-            # print(f"An error of type {type(e)} occurred: {e}")
-            return self.error_reward
-
-        # if the command is not applicable, return
-        if res is None:
-            return self.error_reward
-        
-        # if the command is applicable, conduct the command
-        self.problem = res[0]
-
-        # test the interestingness of the current equation
-        interestingness = _test_intere((self.problem, self.timeout))
-
-        # calculate the reward
-        reward = interestingness - self.last_interestingness
-        self.last_interestingness = interestingness
-        return reward
+        return str(self.problem) + " : "
     
-def test_env(model, step_limit, context_length, temperature) -> str:
+    def step(self, action: str, state_len_limit: int) -> float:
+        '''
+        Notice that the state length limit include the '<SOS>' token and the ':' token.
+        '''
 
-    env = GenEnv(Term("=", (Term("x"), Term("x"))))
-    res : list[str] = []
-    total_reward = 0.
+        temp_eq = env.Equation(self.problem)
+
+        res = self.scenario.kernel.action_by_code(temp_eq, action)
+
+        if res != env.ACT_RESULT.SUCCESS:
+            return -1.
+
+        # check whether the state length limit is reached
+        state_len = len(self.scenario.tokenizer.encode(str(temp_eq))) + 2
+        if state_len > state_len_limit:
+            return -1.
+        
+        self.problem = temp_eq
+
+        return 0.
+
+
+class SolveEnv:
+    '''
+    The environment for the equation solving task.
+
+    The reward is defined as the negative of the length of proof.
+    '''
+    def __init__(self, scenario: Scenario, problem : env.Equation):
+        self.problem = problem
+        self.scenario = scenario
+
+    @property
+    def state(self) -> str:
+        return str(self.problem) + " : "
+    
+    def step(self, action: str, state_len_limit: int) -> float:
+        '''
+        Notice that the state length limit include the '<SOS>' token and the ':' token.
+        '''
+
+        temp_eq = env.Equation(self.problem)
+
+        res = self.scenario.kernel.action_by_code(temp_eq, action)
+
+        if res != env.ACT_RESULT.SUCCESS:
+            return -1.
+
+        # check whether the state length limit is reached
+        state_len = len(self.scenario.tokenizer.encode(str(temp_eq))) + 2
+        if state_len > state_len_limit:
+            return -1.
+        
+        self.problem = temp_eq
+
+        return -1.
+
+
+def solve_group(model, scenario, problems: list[str], step_limit: int, state_len_limit: int, context_length: int, T: float) -> list[Trace]:
+    '''
+    Solve a group of proof kernels for parallel training and evaluation.
+    '''
+    parsed_problems : list[env.Equation] = [env.parse_equation(problem) for problem in problems]    # type: ignore
+    envs = [SolveEnv(scenario, problem) for problem in parsed_problems]
+    env_idx_mapping = [i for i in range(len(envs))]
+    batch_size = len(envs)
+
+    # proceed the examples
+    traces: list[list[tuple[str, torch.Tensor, float]]] = [[] for _ in range(batch_size)]
+
+    progress_bar = tqdm(total=step_limit)
+
+
+    # NOTICE: multiprocessing acceleration is possible here
 
     for _ in range(step_limit):
-        step_res = f"State: {env.state}\n"
 
-        # generate the batch
-        batch = [env.state]
-        actions, log_probs = batch_generation(model, batch, context_length, temperature)
+        # check the finished envs
+        temp_envs : list[SolveEnv] = []
+        for i in range(len(envs)):
+            if envs[i].problem.lhs == envs[i].problem.rhs:
+                env_idx_mapping = env_idx_mapping[:i] + env_idx_mapping[i+1:]
+            else:
+                temp_envs.append(envs[i])
 
-        reward = env.step(actions[0])
+        # if all the envs are finished, break
+        if len(temp_envs) == 0:
+            break
 
-        step_res += f"Action: {actions[0]}\n"
-        step_res += f"Reward: {reward}, Interestingness: {env.last_interestingness}\n"
-        print(step_res)
-        res.append(step_res)
-        total_reward += reward
-    
-    print(f"Total Reward: {total_reward}")
-    return "\n".join(res) + "Total Reward: " + str(total_reward)
+        envs = temp_envs
 
-def process_env(i, shared_envs, action):
-    '''
-    helping function for parallel processing
-    '''
-    env = shared_envs[i]
-    reward = env.step(action)
-    shared_envs[i] = env
-    return i, reward
+        finished_count = batch_size - len(envs)
 
-def gen_example_group(model, batch_size: int = 10, step_limit: int = 20, context_length: int = 256, T: float = 1.0) -> list[list[tuple[str, torch.Tensor, float]]]:
+        # update the description of the progress bar
+        progress_bar.desc = f"Solving in Envs({finished_count}/{batch_size})"
+
+        # generate the batched solution
+        batch = [env.state for env in envs]
+        actions, log_probs = batch_generation(model, scenario, batch, context_length, T)
+
+        reward_results : list[float] = []
+        for i in range(len(envs)):
+            # the generation may be unfinished and the C++ parser will report an warning
+            reward_results.append(envs[i].step(actions[i], state_len_limit))
+
+        for i, reward in enumerate(reward_results):
+            traces[env_idx_mapping[i]].append((actions[i], log_probs[i], reward))
+
+        progress_bar.update(1)
+
+    return [Trace(problem, trace) for problem, trace in zip(parsed_problems, traces)]
+
+
+
+def gen_group(model, 
+                      scenario: Scenario,
+                      batch_size: int = 10, 
+                      step_limit: int = 20, 
+                      state_len_limit: int = 128,
+                      context_length: int = 256, 
+                      T: float = 1.0) -> list[Trace]:
     '''
     Generate a group of example traces.
 
     Args:
+        model: the model to generate the rewriting traces.
         batch_size: the number of examples to generate.
         step_limit: the maximum number of steps for each example.
 
@@ -112,58 +166,117 @@ def gen_example_group(model, batch_size: int = 10, step_limit: int = 20, context
         A list of traces. Each trace is a list of tuples (action, log probability, reward).
         Notice that an action is a complete response from the agent, not a single token.
     '''
-    
-    envs = [GenEnv(Term("=", (Term("x"), Term("x")))) for _ in range(batch_size)]
+
+    # create initial equations and environments
+    x = list(scenario.sig.variables)[0]
+    envs = [GenEnv(scenario, env.Equation(env.Term(x), env.Term(x))) for _ in range(batch_size)]
 
     # proceed the examples
     traces: list[list[tuple[str, torch.Tensor, float]]] = [[] for _ in range(batch_size)]
 
-    remaining_number = len(envs)
     progress_bar = tqdm(total=step_limit)
 
-    with mp.Manager() as manager:
-        shared_envs = manager.list(envs)
 
-        with mp.Pool(mp.cpu_count()) as pool:
-            for _ in range(step_limit):
-                # update the description of the progress bar
-                progress_bar.desc = f"Generating in Envs({remaining_number}/{batch_size})"
+    # NOTICE: multiprocessing acceleration is possible here
 
-                # generate the batch
-                batch = [env.state for env in shared_envs]
-                actions, log_probs = batch_generation(model, batch, context_length, T)
+    for _ in range(step_limit):
+        # update the description of the progress bar
+        progress_bar.desc = f"Generating in Envs ({batch_size})"
 
-                remaining_number = 0
+        # generate the batch
+        batch = [env.state for env in envs]
+        actions, log_probs = batch_generation(model, scenario, batch, context_length, T)
 
-                # multiprocess version
-                reward_results = pool.starmap(process_env, [(i, shared_envs, actions[i]) for i in range(len(shared_envs))])
+        reward_results : list[float] = []
+        for i in range(len(envs)):
+            # the generation may be unfinished and the C++ parser will report an warning
+            reward_results.append(envs[i].step(actions[i], state_len_limit))
 
-                # single thread version
-                # reward_results = []
-                # for i in range(len(envs)):
-                #     reward_results.append((i, envs[i].step(actions[i])))
+        for i, reward in enumerate(reward_results):
+            traces[i].append((actions[i], log_probs[i], reward))
 
-                for i, reward in reward_results:
-                    traces[i].append((actions[i], log_probs[i], reward))
-                    remaining_number += 1
+        progress_bar.update(1)
 
-                progress_bar.update(1)
+    return [Trace(env.problem, trace) for env, trace in zip(envs, traces)]
 
-    return traces
 
-    
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard.writer import SummaryWriter
 from torch.optim.adamw import AdamW
 from tqdm import tqdm
-from typing import Optional
+from typing import Literal, Optional
 from elab import ELab, set_adamw_params, get_grad_norm
 
-from model import ModelArgs, Llama3, token2id, SmallArgs
+from model import ModelArgs, Llama3, SmallArgs
+
+
+def construct_pseudo_loss(sol_traces: list[Trace], device: str|torch.device) -> tuple[float, torch.Tensor]:
+    '''
+    Construct and return the reward and pseudo loss for this batch.
+    '''
+
+    # calculate the baseline
+    batch_reward = 0.
+    for trace in sol_traces:
+        for i in range(len(trace.steps)):
+            batch_reward += trace.steps[i][2]
+
+    avg_trace_reward = batch_reward / len(sol_traces) # average reward per trace
+
+    J = torch.tensor(0.0, device=device)
+
+    for trace in sol_traces:
+        steps = trace.steps
+        for i in range(len(steps)):
+            _, log_prob, reward_to_go = steps[i]
+
+            # calculate the reward to go
+            for j in range(i+1, len(steps)):
+                _, _, r = steps[j]
+                reward_to_go += r
+
+            J += log_prob * (reward_to_go - avg_trace_reward)
+
+    return avg_trace_reward, J / len(sol_traces)
+
+def init_sol_gen_models(        
+        gen_model: Llama3,
+        sol_model: Llama3,
+        ckpt_folder: str):
+    '''
+    Initialize the models and optimizers for the reinforcement learning training.
+    '''
+            
+    gen_optim = AdamW(gen_model.parameters())
+    ELab(
+        ckpt_folder + "/gen",
+        version_name="none",
+        data = {
+            'model': gen_model,
+            'optim' : gen_optim,
+            't' : 1
+        },
+        device = device
+    ).save("init")
+
+    sol_optim = AdamW(gen_model.parameters())
+    ELab(
+        ckpt_folder + "/sol",
+        version_name="none",
+        data = {
+            'model': sol_model,
+            'optim' : sol_optim,
+            't' : 1
+        },
+        device = device
+    ).save("init")
 
 def rl_train(
-        model: Llama3,
+        gen_model: Llama3,
+        sol_model: Llama3,
+        scenario: Scenario,
+        state_len_limit: int,
         context_length: int,
 
         ckpt_folder: str,
@@ -178,48 +291,96 @@ def rl_train(
         grad_norm_clip: Optional[float] = None,
 
         # training settings
+        learn_model : Literal['gen', 'sol'] = 'sol',
         num_steps: int = 200, 
         batch_size: int = 10, 
-        accumulaton_step: int = 10,
+        accumulation_step: int = 10,
         save_interval: Optional[int] = 10,
         logging: bool = True,
 
         # reinforcement learning settings
-        rl_step_limit: int = 20,
+        rl_gen_step_limit: int = 20,
+        rl_sol_step_limit: int = 20,
         rl_temperature: float = 0.6,):
 
 
     # get device
-    device = next(model.parameters()).device
+    device = next(sol_model.parameters()).device
 
-    # Set up the optimizer
+    # Set up the optimizer (according to the learning model)
     optimizer = AdamW(
-        model.parameters(),
+        sol_model.parameters() if learn_model == 'sol' else gen_model.parameters(),
         lr = lr, betas = betas, weight_decay=weight_decay,
         eps = eps
     )
 
     # create/load the checkpoint
     # here t represents the next step number to be executed
-    lab = ELab(
-        ckpt_folder, 
-        version_name=input_version_name,
-        model = model,
-        optimizer = optimizer,
-        default_states={
-            't': 1,
-        }
-    )
+    if learn_model == 'sol':
+        sol_lab = ELab(
+            ckpt_folder + "/sol", 
+            version_name=input_version_name,
+            data = {
+                'model': sol_model,
+                'optim' : optimizer,
+                't' : 1
+            },
+            device = device
+        )
+        gen_lab = ELab(
+            ckpt_folder + "/gen",
+            version_name=input_version_name,
+            data = {
+                'model': gen_model,
+                't' : 1
+            },
+            device = device
+        )
+        sol_model.train()
+        gen_model.eval()
+        t: int = max(sol_lab.data['t'], gen_lab.data['t'])
 
+    else:
+        sol_lab = ELab(
+            ckpt_folder + "/sol", 
+            version_name=input_version_name,
+            data = {
+                'model': sol_model,
+                't' : 1
+            },
+            device = device
+        )
+        gen_lab = ELab(
+            ckpt_folder + "/gen",
+            version_name=input_version_name,
+            data = {
+                'model': gen_model,
+                'optim' : optimizer,
+                't' : 1
+            },
+            device=device
+        )
+        gen_model.train()
+        sol_model.eval()
+        t: int = max(sol_lab.data['t'], gen_lab.data['t'])
+
+
+
+    # the method to save the labs
+    def save_labs():
+        sol_lab.data['t'] = t
+        gen_lab.data['t'] = t
+        if learn_model == 'sol':
+            sol_lab.save(f"RL-{t}")
+        else:
+            gen_lab.save(f"RL-{t}")            
+    
     set_adamw_params(optimizer, lr=lr, betas=betas, weight_decay=weight_decay, eps=eps)
 
-    model.train()
     optimizer.zero_grad()
 
-    t: int = lab.states['t']
-
     # tensorboard logger
-    writer = SummaryWriter(lab.folder_path)
+    writer = SummaryWriter(ckpt_folder)
 
     try:
         step = 0
@@ -227,87 +388,121 @@ def rl_train(
 
             print(f"Step {step + 1}/{num_steps}")
 
-
             # note that reward is calculated for each trace
-            avg_reward = 0.
-            total_pseudo_loss = 0.
-            total_SA_pair_count = 0
+            sol_avg_reward = 0.
+            sol_total_pseudo_loss = 0.
+
+            gen_avg_reward = 0.
+            gen_total_pseudo_loss = 0.
+
             torch.cuda.empty_cache()
 
             try:
-                for _ in range(accumulaton_step):
-                    # STEP 1: sample the traces
-                    # generate the example traces
-                    traces = gen_example_group(model, batch_size, rl_step_limit, context_length, rl_temperature)
+                for _ in range(accumulation_step):
+                    # STEP 1: sampling the episodes
+                    # generate the problems
+                    gen_traces = gen_group(gen_model, scenario, batch_size, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
+                    
+                    # solve the problems
+                    equations = [str(trace.equation) for trace in gen_traces]
+                    sol_traces = solve_group(sol_model, scenario, equations, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
+
+                    ###########################
+                    
+                    # STEP 2: Calculate the pseudo loss
+
+                    # (GEN)
+                    # add the final reward of interestingness according to the solution result
+                    for i in range(len(gen_traces)):
+                        original = gen_traces[i].steps[-1]
+                        gen_traces[i].steps[-1] = (original[0], original[1], original[2] + interestingness(gen_traces[i].equation, len(sol_traces[i].steps)))
+
+                    gen_reward, gen_J = construct_pseudo_loss(gen_traces, device)
+
+                    gen_avg_reward += gen_reward / accumulation_step
+                    gen_total_pseudo_loss += gen_J.item()
+
+                    # (SOL)
+                    sol_reward, sol_J = construct_pseudo_loss(sol_traces, device)
+
+                    sol_avg_reward += sol_reward / accumulation_step
+                    sol_total_pseudo_loss += sol_J.item()
+
                     ###########################
 
-                    # STEP 2: calculate the pseudo loss
-                    # calculate baseline (average total reward)
-                    batch_reward = 0.
-                    batch_SA_pair_count = 0
-                    for trace in traces:
-                        for i in range(len(trace)):
-                            batch_reward += trace[i][2]
-                        batch_SA_pair_count += len(trace)
-                    avg_trace_reward = batch_reward / batch_size
-
-                    # add to total
-                    avg_reward += avg_trace_reward / accumulaton_step
-                    total_SA_pair_count += batch_SA_pair_count
-
-                    J = torch.tensor(0.0, device=device)
-
-                    for trace in traces:
-                        for i in range(len(trace)):
-                            _, log_prob, reward_to_go = trace[i]
-
-                            # calculate the reward to go
-                            for j in range(i+1, len(trace)):
-                                _, _, r = trace[j]
-                                reward_to_go += r
-
-                            J -= log_prob * (reward_to_go - avg_trace_reward)
-
-                    total_pseudo_loss += J.item()
-
                     # STEP 3: Backward pass and optimization
-                    J.backward()        # Backward pass
+                    if learn_model == 'sol':
+                        if any(len(trace.steps) > 0 for trace in sol_traces):
+                            (-sol_J).backward()        # Backward pass
+                        else:
+                            print("No valid sol trace generated.")
+                    else:
+                        if any(len(trace.steps) > 0 for trace in gen_traces):
+                            (-gen_J).backward()
+                        else:
+                            print("No valid gen trace generated.")
 
-                # for normalization reasons, the pseudo loss is calculated for each state-action pair
-                avg_pseudo_loss = total_pseudo_loss / total_SA_pair_count
+                # average the pseudo loss
+                sol_avg_pseudo_loss = sol_total_pseudo_loss / accumulation_step
+                gen_avg_pseudo_loss = gen_total_pseudo_loss / accumulation_step
 
-                # adjust the gradient by total SA pair count
-                for param in model.parameters():
+                # adjust the gradient by number of accumulation steps
+                for param in (sol_model.parameters() if learn_model == 'sol' else gen_model.parameters()):
                     if param.grad is not None:
-                        param.grad /= total_SA_pair_count
+                        param.grad /= accumulation_step
 
-                raw_grad_norm = get_grad_norm(model)
+                if learn_model == 'sol':
+                    sol_raw_grad_norm = get_grad_norm(sol_model)
+                else:
+                    gen_raw_grad_norm = get_grad_norm(gen_model)
 
                 if grad_norm_clip is not None:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_norm_clip)
+                    if learn_model == 'sol':
+                        torch.nn.utils.clip_grad_norm_(sol_model.parameters(), grad_norm_clip)
+                    else:
+                        torch.nn.utils.clip_grad_norm_(gen_model.parameters(), grad_norm_clip)
 
 
-                optimizer.step()       # Update weights
+                optimizer.step()
                 optimizer.zero_grad()
 
-                # output
-                print(f"{ckpt_folder}\tStep {t}\tPseudo Loss: {avg_pseudo_loss:.3f}\tAvg Reward: {avg_reward:.3f}\tRaw Grad Norm: {raw_grad_norm:.3f}")
-
                 # test generation result
-                gen_seq = test_env(model, rl_step_limit, context_length, rl_temperature)
+                with torch.no_grad():
+                    demo_traces = gen_group(gen_model, scenario, 10, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
+                    demo_eqs = [str(trace.equation) for trace in demo_traces]
+                    demo_sols = solve_group(sol_model, scenario, demo_eqs, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
+                    demo_record = ""
+                    for i in range(len(demo_traces)):
+                        demo_record += f"{demo_eqs[i]}\nSOL-LENGTH {len(demo_sols[i].steps)}, INTERESTINGNESS {interestingness(demo_traces[i].equation, len(demo_sols[i].steps))}\n"
+
+                # output
+                print(f"{ckpt_folder}\t({learn_model}) Step {t}")
+                print(f"Gen Pseudo Loss: {gen_avg_pseudo_loss:.3f}\tGen Avg Reward: {gen_avg_reward:.3f}")
+                print(f"Sol Pseudo Loss: {sol_avg_pseudo_loss:.3f}\tSol Avg Reward: {sol_avg_reward:.3f}")
+                if (learn_model == 'sol'):
+                    print(f"Raw Grad Norm: {sol_raw_grad_norm:.3f}")
+                else:
+                    print(f"Raw Grad Norm: {gen_raw_grad_norm:.3f}")
+                print("Demo:")
+                print(demo_record)
+
 
                 # Logging
                 if logging:
-                    writer.add_scalar("pseudo_loss", avg_pseudo_loss, t)
-                    writer.add_scalar("avg reward", avg_reward, t)
-                    writer.add_scalar("raw grad norm", raw_grad_norm, t)
-                    writer.add_text("generated sequence", gen_seq, t)
+                    writer.add_scalar("sol pseudo loss", sol_avg_pseudo_loss, t)
+                    writer.add_scalar("sol avg reward", sol_avg_reward, t)
+                    writer.add_scalar("gen pseudo loss", gen_avg_pseudo_loss, t)
+                    writer.add_scalar("gen avg reward", gen_avg_reward, t)
+                    if learn_model == 'sol':
+                        writer.add_scalar("sol raw grad norm", sol_raw_grad_norm, t)
+                    else:
+                        writer.add_scalar("gen raw grad norm", gen_raw_grad_norm, t)
+                    writer.add_text("demo", demo_record, t)
 
                 t += 1
 
                 if save_interval is not None and t % save_interval == 0:
-                    lab.states['t'] = t
-                    lab.save(f"RL-{t}")
+                    save_labs()
 
                 step += 1
             
@@ -324,32 +519,79 @@ def rl_train(
 
     finally:
         if save_interval is not None:
-            lab.states['t'] = t
-            lab.save(f"RL-{t}")
+            save_labs()
 
     print("Training completed and model saved.")
 
 if __name__ == '__main__':
-    args = SmallArgs()
-    rl_train(
-        Llama3(
+    
+    # parsing the arguments
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--init", action="store_true")
+    parser.add_argument("--mode", type=str, default='sol')
+    parsed_args = parser.parse_args()
+    if parsed_args.mode not in ['sol', 'gen']:
+        raise ValueError("Invalid mode.")
+    else:
+        learn_mode : Literal['sol', 'gen'] = parsed_args.mode   # type: ignore
+
+    alg_code = '''
+    [function]
+    * : 2
+
+    [variable]
+    x y z u v w
+
+    [axiom]
+    (AX1) *(x y) = *(*(y y) x)
+    '''
+
+    scenario = Scenario(alg_code)
+
+    args = MediumArgs(vocab_size=scenario.tokenizer.get_vocab_size(), context_length=150)
+    device = 'cuda'
+
+    ckpt_folder = "./ckpt/Magma"
+    
+    gen_model = Llama3(
             model_args = args,
             device=device
-        ),
+    )
+    sol_model = Llama3(
+        model_args = args,
+        device=device
+    )
+
+    if parsed_args.init:
+        # clean the folder ckpt_folder
+        import shutil, os
+        shutil.rmtree(ckpt_folder, ignore_errors=True)
+        os.makedirs(ckpt_folder)
+        # initialize the models
+        init_sol_gen_models(gen_model, sol_model, ckpt_folder)
+
+    rl_train(
+        gen_model = gen_model,
+        sol_model = sol_model,
+        scenario = scenario,
+        state_len_limit = 100,
         context_length = args.context_length,
 
-        ckpt_folder = "./ckpt/OMLgenBal",
-        input_version_name = '1565',
+        ckpt_folder = ckpt_folder,
+        input_version_name = 'none' if parsed_args.init else 'latest',
 
-        lr = 2e-5,
+        lr = 2e-6,
         weight_decay=0.01,
         betas=(0.9, 0.99),
         grad_norm_clip=1.0,
 
-        num_steps = 400,
-        batch_size = 4,
-        accumulaton_step = 25,
-        rl_step_limit=10,
+        learn_model = learn_mode,
+        num_steps = 64,
+        batch_size = 6,
+        accumulation_step = 16,
+        rl_gen_step_limit=5,
+        rl_sol_step_limit=15,
         rl_temperature=0.6,
 
         save_interval=10000

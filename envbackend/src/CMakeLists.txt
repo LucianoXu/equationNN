@@ -41,6 +41,7 @@ add_library(
     algebra.cpp
     parser.cpp
     env.cpp
+    utils.cpp
 
     ${ANTLR_PARSER_GEN_FILES}
 )

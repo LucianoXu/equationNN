@@ -4,7 +4,8 @@
 
 #pragma once
 
-#include "parser.hpp"
+#include <stack>
+#include "algebra.hpp"
 
 namespace ualg {
 

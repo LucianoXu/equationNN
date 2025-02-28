@@ -143,3 +143,46 @@ def test_gen_valid_check():
         print(res)
         if not env.check_action(scenario.kernel, res):
             raise Exception("Invalid action")
+
+def test_push_string():
+    alg_code = '''
+    [function]
+    * : 2
+
+    [variable]
+    x y z u v w
+
+    [axiom]
+    (AX1) *(x y) = *(*(y y) x)
+    '''
+    scenario = Scenario(alg_code)
+
+    machine = env.NextTokenMachine(scenario.alg)
+
+    assert machine.push_string("*(*(*(x x) x) x)")
+
+def test_vampire_solver():
+    from ext_solver import vampire_solve
+
+    alg_code = '''
+    [function]
+    & : 2
+    | : 2
+    ~ : 1
+    zero : 0
+
+    [variable]
+    x y z u v w
+
+    [axiom]
+    (AX1) x = &(x z)
+    (AX2) &(x y) = |(&(y x) z)
+    '''
+
+    scenario = Scenario(alg_code)
+
+    problem = env.parse_equation("&(x y) = |(&(y x) z)")
+    assert problem is not None
+
+    res = vampire_solve("vampire", scenario, problem)
+    assert res.is_true == True

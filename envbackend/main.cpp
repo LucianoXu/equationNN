@@ -23,6 +23,12 @@ int main() {
         (AX2) &(x y) = |(z w)
     )").value();
 
+    equation eq = parse_equation("&(x y) = |(z w)").value();
+
+    cout << vampire_problem_encode(alg, eq) << endl;
+
+    return 0;
+
     auto machine = NextTokenMachine(alg);
 
     // vector<string> seq = {"&", "(", "x", "y", ")", "=", "&", "(", "&", "(", "u", "u", ")", "y", ")", ":", "AX1_L2R", "(", "0", ")", "{", "z", ":", "zero", "}"};

@@ -99,4 +99,6 @@ PYBIND11_MODULE(envbackend, m) {
     m.def("parse_equation", &parse_equation, "A function that parses the equation code.");
     m.def("parse_alg", &parse_alg, "A function that parses the algebra code.");
     m.def("check_action", &check_action, "A function that checks whether the action is valid.");
+
+    m.def("vampire_problem_encode", &vampire_problem_encode, "A function that generates the Vampire encode for the given problem.");
 }
