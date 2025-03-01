@@ -150,6 +150,10 @@ namespace ualg{
 
         equation(const equation& other) : lhs(other.lhs), rhs(other.rhs) {}
 
+        int get_size() const {
+            return lhs->get_term_size() + rhs->get_term_size() + 1;
+        }
+
         std::set<std::string> get_variables(const Signature& sig) const {
             auto lhs_vars = lhs->get_variables(sig);
             auto rhs_vars = rhs->get_variables(sig);

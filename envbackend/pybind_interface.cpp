@@ -33,6 +33,7 @@ PYBIND11_MODULE(envbackend, m) {
         .def(py::init<const equation&>())
         .def_readwrite("lhs", &equation::lhs)
         .def_readwrite("rhs", &equation::rhs)
+        .def_property_readonly("size", &equation::get_size)
         .def("__str__", &equation::to_string)
         .def("__eq__", &equation::operator==)
         .def("__repr__", &equation::to_repr);

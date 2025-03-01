@@ -1,6 +1,7 @@
 from model import *
 from env import env, Scenario
 import multiprocessing as mp
+from evaluation import test_intere_mp
 
 class Trace:
     def __init__(self, equation: env.Equation, steps: list[tuple[str, torch.Tensor, float]]):
@@ -243,7 +244,8 @@ def construct_pseudo_loss(sol_traces: list[Trace], device: str|torch.device) -> 
 def init_sol_gen_models(        
         gen_model: Llama3,
         sol_model: Llama3,
-        ckpt_folder: str):
+        ckpt_folder: str,
+        device : str):
     '''
     Initialize the models and optimizers for the reinforcement learning training.
     '''
@@ -272,7 +274,7 @@ def init_sol_gen_models(
         device = device
     ).save("init")
 
-def rl_train(
+def adv_rl_train(
         gen_model: Llama3,
         sol_model: Llama3,
         scenario: Scenario,
@@ -523,76 +525,184 @@ def rl_train(
 
     print("Training completed and model saved.")
 
-if __name__ == '__main__':
-    
-    # parsing the arguments
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--init", action="store_true")
-    parser.add_argument("--mode", type=str, default='sol')
-    parsed_args = parser.parse_args()
-    if parsed_args.mode not in ['sol', 'gen']:
-        raise ValueError("Invalid mode.")
-    else:
-        learn_mode : Literal['sol', 'gen'] = parsed_args.mode   # type: ignore
 
-    alg_code = '''
-    [function]
-    * : 2
 
-    [variable]
-    x y z u v w
+def gen_rl_train_by_vampire(
+        gen_model: Llama3,
+        scenario: Scenario,
+        state_len_limit: int,
+        context_length: int,
 
-    [axiom]
-    (AX1) *(x y) = *(*(y y) x)
-    '''
+        ckpt_folder: str,
+        input_version_name: str,
+        # optimizer
+        lr: float,
+        weight_decay: float, 
+        betas: tuple[float, float], 
+        eps = 1e-8,
+        grad_norm_clip: Optional[float] = None,
 
-    scenario = Scenario(alg_code)
+        # training settings
+        num_steps: int = 200, 
+        batch_size: int = 10, 
+        accumulation_step: int = 10,
+        save_interval: Optional[int] = 10,
+        logging: bool = True,
 
-    args = MediumArgs(vocab_size=scenario.tokenizer.get_vocab_size(), context_length=150)
-    device = 'cuda'
+        # reinforcement learning settings
+        rl_gen_step_limit: int = 20,
+        rl_temperature: float = 0.6,
+        vampire: str = "vampire",
+        timeout: float = 5,):
 
-    ckpt_folder = "./ckpt/Magma"
-    
-    gen_model = Llama3(
-            model_args = args,
-            device=device
+
+    # get device
+    device = next(gen_model.parameters()).device
+
+    # Set up the optimizer (according to the learning model)
+    optimizer = AdamW(
+        gen_model.parameters(),
+        lr = lr, betas = betas, weight_decay=weight_decay,
+        eps = eps
     )
-    sol_model = Llama3(
-        model_args = args,
+
+    gen_lab = ELab(
+        ckpt_folder,
+        version_name=input_version_name,
+        data = {
+            'model': gen_model,
+            'optim' : optimizer,
+            't' : 1
+        },
         device=device
     )
 
-    if parsed_args.init:
-        # clean the folder ckpt_folder
-        import shutil, os
-        shutil.rmtree(ckpt_folder, ignore_errors=True)
-        os.makedirs(ckpt_folder)
-        # initialize the models
-        init_sol_gen_models(gen_model, sol_model, ckpt_folder)
+    gen_model.train()
+    t: int = gen_lab.data['t']
 
-    rl_train(
-        gen_model = gen_model,
-        sol_model = sol_model,
-        scenario = scenario,
-        state_len_limit = 100,
-        context_length = args.context_length,
+    # the method to save the labs
+    def save_labs():
+        gen_lab.data['t'] = t
+        gen_lab.save(f"RL-{t}")            
+    
+    set_adamw_params(optimizer, lr=lr, betas=betas, weight_decay=weight_decay, eps=eps)
 
-        ckpt_folder = ckpt_folder,
-        input_version_name = 'none' if parsed_args.init else 'latest',
+    optimizer.zero_grad()
 
-        lr = 2e-6,
-        weight_decay=0.01,
-        betas=(0.9, 0.99),
-        grad_norm_clip=1.0,
+    # tensorboard logger
+    writer = SummaryWriter(ckpt_folder)
 
-        learn_model = learn_mode,
-        num_steps = 64,
-        batch_size = 6,
-        accumulation_step = 16,
-        rl_gen_step_limit=5,
-        rl_sol_step_limit=15,
-        rl_temperature=0.6,
+    try:
+        step = 0
+        while step < num_steps:
 
-        save_interval=10000
-    )
+            print(f"Step {step + 1}/{num_steps}")
+
+            # note that reward is calculated for each trace
+            gen_avg_reward = 0.
+            gen_total_pseudo_loss = 0.
+
+            torch.cuda.empty_cache()
+
+            try:
+                for _ in range(accumulation_step):
+                    # STEP 1: sampling the episodes
+                    # generate the problems
+                    gen_traces = gen_group(gen_model, scenario, batch_size, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
+                    
+                    # solve the problems
+                    equations = [trace.equation for trace in gen_traces]
+                    intere_vals = test_intere_mp(vampire, scenario, equations, timeout)
+
+                    ###########################
+                    
+                    # STEP 2: Calculate the pseudo loss
+
+                    # (GEN)
+                    # add the final reward of interestingness according to the solution result
+                    for i in range(len(gen_traces)):
+                        original = gen_traces[i].steps[-1]
+                        gen_traces[i].steps[-1] = (original[0], original[1], original[2] + intere_vals[i])
+
+                    gen_reward, gen_J = construct_pseudo_loss(gen_traces, device)
+
+                    gen_avg_reward += gen_reward / accumulation_step
+                    gen_total_pseudo_loss += gen_J.item()
+
+                    ###########################
+
+                    # STEP 3: Backward pass and optimization
+                    if any(len(trace.steps) > 0 for trace in gen_traces):
+                        (-gen_J).backward()
+                    else:
+                        print("No valid gen trace generated.")
+
+                # average the pseudo loss
+                gen_avg_pseudo_loss = gen_total_pseudo_loss / accumulation_step
+
+                # adjust the gradient by number of accumulation steps
+                for param in (gen_model.parameters()):
+                    if param.grad is not None:
+                        param.grad /= accumulation_step
+
+                gen_raw_grad_norm = get_grad_norm(gen_model)
+
+                if grad_norm_clip is not None:
+                    torch.nn.utils.clip_grad_norm_(gen_model.parameters(), grad_norm_clip)
+
+
+                optimizer.step()
+                optimizer.zero_grad()
+
+                # test generation result
+                with torch.no_grad():
+                    demo_traces = gen_group(gen_model, scenario, 10, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
+                    demo_eqs = [trace.equation for trace in demo_traces]
+                    demo_intere_vals = test_intere_mp(vampire, scenario, demo_eqs, timeout)
+                    demo_record = ""
+                    for i in range(len(demo_traces)):
+                        demo_record += f"INTERE {demo_intere_vals[i]:.3f}\t{demo_eqs[i]}\n"
+
+                # output
+                print(f"{ckpt_folder}\t Step {t}")
+                print(f"Gen Pseudo Loss: {gen_avg_pseudo_loss:.3f}\tGen Avg Reward: {gen_avg_reward:.3f}")
+                print(f"Raw Grad Norm: {gen_raw_grad_norm:.3f}")
+                print("Demo:")
+                print(demo_record)
+
+
+                # Logging
+                if logging:
+                    writer.add_scalar("gen pseudo loss", gen_avg_pseudo_loss, t)
+                    writer.add_scalar("gen avg reward", gen_avg_reward, t)
+                    writer.add_scalar("gen raw grad norm", gen_raw_grad_norm, t)
+                    writer.add_text("demo", demo_record, t)
+
+                t += 1
+
+                if save_interval is not None and t % save_interval == 0:
+                    save_labs()
+
+                step += 1
+            
+            except torch.OutOfMemoryError:
+                print("!!! Out of memory error. Skipping this batch !!! ")
+                optimizer.zero_grad()
+
+
+    except KeyboardInterrupt:
+        print("Interrupted by user.")
+
+    except Exception as e:
+        print(f"An error of type {type(e)} occurred: {e}")
+
+    finally:
+        if save_interval is not None:
+            save_labs()
+
+    print("Training completed and model saved.")
+
+
+
+if __name__ == '__main__':
+    pass

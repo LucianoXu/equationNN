@@ -48,7 +48,7 @@ def invoke_vampire(vampire: str|Path, code: str, timeout : float = 10) -> Vampir
     if match:
         generated_clauses = int(match.group(1))
     else:
-        raise ValueError(f'Cannot find the number of generated clauses in the output of Vampire: {stdout}')
+        raise ValueError(f'Cannot find the number of generated clauses in the output of Vampire: {stdout}\nstderr: {stderr}\ncode: {code}')
 
     # search for "Time elapsed: ... s" in stdout using regex
     match = time_elapsed_re.search(stdout)
@@ -76,6 +76,7 @@ def invoke_vampire(vampire: str|Path, code: str, timeout : float = 10) -> Vampir
 
     return VampireResult(elapsed_time, generated_clauses, is_true)
 
+
 def vampire_solve(vampire: str|Path, scenario: Scenario, problem: env.Equation, timeout : float = 1) -> VampireResult:
     '''
     Solve the problem using Vampire.
@@ -85,5 +86,19 @@ def vampire_solve(vampire: str|Path, scenario: Scenario, problem: env.Equation, 
     return invoke_vampire(vampire, code, timeout)
 
 
+import multiprocessing as mp
 
+def vampire_solve_mp(vampire: str|Path, scenario: Scenario, problems: list[env.Equation], timeout: float = 1) -> list[VampireResult]:
+    '''
+    Solve the problems using Vampire in parallel.
+    '''
+    # generate the code
+    code_list = [env.vampire_problem_encode(scenario.alg, problem, False) for problem in problems]
+
+    # prepare the arguments
+    args = [(vampire, code, timeout) for code in code_list]
+
+    # use multiprocessing to solve the problems
+    with mp.Pool() as p:
+        return p.starmap(invoke_vampire, args)
     

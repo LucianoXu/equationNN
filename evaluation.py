@@ -1,84 +1,59 @@
 
-from ext_solver.vampire_solver import VampireResult
-from pyualg import Term
-from scenario import parser
-from ext_solver import vampire_solve
+from env import env, Scenario
+from ext_solver import vampire_solve, vampire_solve_mp, VampireResult
 from math import log
 import json
-
-# create the axioms for vampire
-Ax_commC = parser.parse_term('((X & Y) = (Y & X))')
-Ax_commJ = parser.parse_term('((X | Y) = (Y | X))')
-Ax_assocC = parser.parse_term('(((X & Y) & Z) = (X & (Y & Z)))')
-Ax_assocJ = parser.parse_term('(((X | Y) | Z) = (X | (Y | Z)))')
-Ax_absorpC = parser.parse_term('((X & (X | Y)) = X)')
-Ax_absorpJ = parser.parse_term('((X | (X & Y)) = X)')
-Ax_doubleNeg = parser.parse_term('((~ (~ X)) = X)')
-Ax_deMorganC = parser.parse_term('((~ (X & Y)) = ((~ X) | (~ Y)))')
-Ax_deMorganJ = parser.parse_term('((~ (X | Y)) = ((~ X) & (~ Y)))')
-Ax_oml = parser.parse_term('((X | Y) = (((X | Y) & X) | ((X | Y) & (~ X))))')
-
-Axioms = [Ax_commC, Ax_commJ, Ax_assocC, Ax_assocJ, Ax_absorpC, Ax_absorpJ, Ax_doubleNeg, Ax_deMorganC, Ax_deMorganJ, Ax_oml]
-
-conf = json.load(open('config.json'))
-vampire = conf['vampire']
-
 
 def intere_fun(vampire_res: VampireResult, size: int) -> float:
     '''
     Compute the interestingness of a problem.
     '''
     # return log((vampire_res.elapsed_time + 0.001) / size)
-    return log(vampire_res.generated_clauses)
+    return log(vampire_res.generated_clauses / (size + 42))
 
-def _test_intere(args: tuple[Term, float]) -> float:
+def test_intere(args: tuple[str, Scenario, env.Equation, float]) -> float:
     '''
     Test the interestingness function.
+    Input: algebra, example, timeout
     '''
-    example, timeout = args
+    vampire, scenario, example, timeout = args
     size = example.size
-    res = vampire_solve(vampire, Axioms, example, timeout)
+    res = vampire_solve(vampire, scenario, example, timeout)
 
     if res.is_true is False:
         raise ValueError("Vampire reports the problem is invalid.")
     
     return intere_fun(res, size)
 
-
-from multiprocessing import Pool
-
-def test_intere(examples: list[Term], timeout: float = 10) -> list[float]:
+def test_intere_mp(vampire: str, scenario: Scenario, examples: list[env.Equation], timeout: float = 10) -> list[float]:
     '''
     Use multiprocess to test the interestingness function.
     '''
-    # prepare the arguments
-    args = [(example, timeout) for example in examples]
+    vampire_results = vampire_solve_mp(vampire, scenario, examples, timeout)
 
-    with Pool() as p:
-        return p.map(_test_intere, args)
+    return [intere_fun(res, example.size) for res, example in zip(vampire_results, examples)]
 
-
-def calc_avg_intere(examples: list[Term], timeout: float = 10) -> float:
+def calc_avg_intere(vampire: str, scenario: Scenario, examples: list[env.Equation], timeout: float = 10) -> float:
     '''
     Calculate the average interestingness of a list of examples.
     '''
-    return sum(test_intere(examples, timeout)) / len(examples)
+    return sum(test_intere_mp(vampire, scenario, examples, timeout)) / len(examples)
 
 
 if __name__ == "__main__":
-    from rewritepath import path_to_examples
-    from gen import gen_example, signature
-    from scenario import r_subst
+    pass
+    # from gen import gen_example, signature
+    # from scenario import r_subst
 
-    for _ in range(15):
-        path = gen_example(20, 3)
-        # print(path)
-        # for example in path.path:
-        #     if example[1] == r_subst:
-        #         input()
+    # for _ in range(15):
+    #     path = gen_example(20, 3)
+    #     # print(path)
+    #     # for example in path.path:
+    #     #     if example[1] == r_subst:
+    #     #         input()
 
-        print("Testing interestingness ...")
-        interestingness = test_intere([term for term, _, _, _, _ in path.path])
-        print(interestingness)
+    #     print("Testing interestingness ...")
+    #     interestingness = test_intere([term for term, _, _, _, _ in path.path])
+    #     print(interestingness)
 
 
