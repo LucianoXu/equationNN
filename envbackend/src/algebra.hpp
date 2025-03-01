@@ -96,7 +96,6 @@ namespace ualg{
     public: 
         Term(const std::string& head);
         Term(const std::string& head, const std::vector<TermPtr>& args);
-        Term(const std::string& head, std::vector<TermPtr>&& args);
 
         const std::string& get_head() const;
         const std::vector<TermPtr>& get_args() const;

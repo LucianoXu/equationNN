@@ -23,10 +23,15 @@ TEST(TestAlg, parsing_pos) {
     EXPECT_EQ(actual_res, expected_res);
 }
 
-TEST(TestAlg, parsing_subst) {
+TEST(TestAlg, parsing_subst1) {
     auto actual_res = ualg::parse_subst("{x: y, z: f(x y)}").value();
     subst expected_res = {{"x", make_shared<Term>("y")}, {"z", make_shared<Term>("f", vector<TermPtr>{make_shared<Term>("x"), make_shared<Term>("y")})}};
     EXPECT_TRUE(subst_eq(actual_res, expected_res));
+}
+
+TEST(TestAlg, parsing_proof_action) {
+    auto actual_res = ualg::parse_proof_action("SUBST x ~ ( w )").value();
+    EXPECT_EQ(to_string(actual_res.spec_subst), "{x: ~(w)}");
 }
 
 TEST(TestAlg, parsing_sig) {
@@ -109,6 +114,20 @@ TEST(TestAlg, term_get_all_subterms) {
     EXPECT_EQ(res[2].first, TermPos({0, 0}));
     EXPECT_EQ(res[3].first, TermPos({0, 1}));
     EXPECT_EQ(res[4].first, TermPos({1}));
+}
+
+TEST(TestAlg, signature_properties) {
+    Signature sig = parse_signature(R"(
+        [function]
+        & : 2
+        | : 2
+        ~ : 1
+
+        [variable]
+        x y z u v w
+    )").value();
+
+    EXPECT_EQ(sig.get_variables(), set<string>({"x", "y", "z", "u", "v", "w"}));
 }
 
 TEST(TestAlg, signature_check) {
@@ -401,7 +420,7 @@ TEST(TestAlg, apply_action) {
     EXPECT_EQ(eq, parse_equation("&(x y) = |(&(u v) |(zero zero))").value());
 }
 
-TEST(TestAlg, apply_action_subst) {
+TEST(TestAlg, apply_action_subst1) {
     Algebra alg = parse_alg(R"(
         [function]
         & : 2
@@ -422,4 +441,35 @@ TEST(TestAlg, apply_action_subst) {
     auto eq = parse_equation("&(x y) = &(&(u u) y)").value();
     kernel.action_by_code(eq, "SUBST y &(x x)");
     EXPECT_EQ(eq, parse_equation("&(x &(x x)) = &(&(u u) &(x x))").value());
+}
+
+
+TEST(TestAlg, apply_action_subst2) {
+    Algebra alg = parse_alg(R"(
+        [function]
+        & : 2
+        | : 2
+        ~ : 1
+
+        [variable]
+        x y z u v w
+
+        [axiom]
+        (AX1) &(x y) = &(y x)
+        (AX2) |(x y) = |(y x)
+        (AX3) &(x &(y z)) = &(&(x y) z)
+        (AX4) |(x |(y z)) = |(|(x y) z)
+        (AX5) &(x |(x y)) = x
+        (AX6) |(x &(x y)) = x
+        (AX7) ~(~(x)) = x
+        (AX8) ~(&(x y)) = |(~(x) ~(y))
+        (AX9) ~(|(x y)) = &(~(x) ~(y))
+        (OML) |(x y) = |(&(|(x y) x) &(|(x y) ~(x)))
+    )").value();
+
+    SymbolKernel kernel(alg);
+
+    auto eq = parse_equation("|(&(|(y &(y x)) y) &(~(y) |(y &(y x)))) = y").value();
+    kernel.action_by_code(eq, "SUBST y ~( x )");
+    EXPECT_EQ(eq, parse_equation("|(&(|(~( x ) &(~( x ) x)) ~( x )) &(~(~( x )) |(~( x ) &(~( x ) x)))) = ~( x )").value());
 }

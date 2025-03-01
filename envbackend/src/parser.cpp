@@ -172,8 +172,9 @@ namespace ualg {
             arguments.insert(arguments.begin(), term_stack.top());
             term_stack.pop();
         }
-    
-        auto application_term = make_shared<Term>(function_name, std::move(arguments));
+        
+        // I don't understand why using std::move(arguments) leads to unexpected behavior
+        auto application_term = make_shared<Term>(function_name, arguments);
         term_stack.push(application_term);
     }
     
@@ -243,10 +244,9 @@ namespace ualg {
         ENVBACKENDParser parser(&tokens);
         tree::ParseTree *tree = parser.equation();
 
-        // Create the tree builder
-        ENVBACKENDTermBuilder treeBuilder;
         // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0) {
+        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
+            ENVBACKENDTermBuilder treeBuilder;
             antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
 
             // Retrieve the root of the custom tree
@@ -268,10 +268,9 @@ namespace ualg {
         ENVBACKENDParser parser(&tokens);
         tree::ParseTree *tree = parser.expr();
 
-        // Create the tree builder
-        ENVBACKENDTermBuilder treeBuilder;
         // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0) {
+        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
+            ENVBACKENDTermBuilder treeBuilder;
             antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
 
             // Retrieve the root of the custom tree
@@ -284,24 +283,25 @@ namespace ualg {
 
     optional<TermPos> parse_pos(const string& code) {
         using namespace antlr4;
-        
+    
         ANTLRInputStream input(code);
         ENVBACKENDLexer lexer(&input);
         CommonTokenStream tokens(&lexer);
-
+    
         tokens.fill();
-        
+    
         ENVBACKENDParser parser(&tokens);
-        tree::ParseTree *tree = parser.pos();
 
-        // Create the tree builder
-        ENVBACKENDTermBuilder treeBuilder;
-        // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0) {
+        tree::ParseTree *tree = parser.pos();
+    
+        // Ensure the entire input is consumed by checking EOF
+        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
+            // Create the tree builder
+            ENVBACKENDTermBuilder treeBuilder;
             antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
 
             // Retrieve the root of the custom tree
-            return treeBuilder.get_pos();            
+            return treeBuilder.get_pos();
         } else {
             return nullopt;
         }
@@ -319,10 +319,9 @@ namespace ualg {
         ENVBACKENDParser parser(&tokens);
         tree::ParseTree *tree = parser.subst();
 
-        // Create the tree builder
-        ENVBACKENDTermBuilder treeBuilder;
         // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0) {
+        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
+            ENVBACKENDTermBuilder treeBuilder;
             antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
 
             // Retrieve the root of the custom tree
@@ -344,10 +343,9 @@ namespace ualg {
         ENVBACKENDParser parser(&tokens);
         tree::ParseTree *tree = parser.sig();
 
-        // Create the tree builder
-        ENVBACKENDTermBuilder treeBuilder;
         // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0) {
+        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
+            ENVBACKENDTermBuilder treeBuilder;
             antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
 
             // Retrieve the root of the custom tree
@@ -369,10 +367,9 @@ namespace ualg {
         ENVBACKENDParser parser(&tokens);
         tree::ParseTree *tree = parser.alg();
 
-        // Create the tree builder
-        ENVBACKENDTermBuilder treeBuilder;
         // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0) {
+        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
+            ENVBACKENDTermBuilder treeBuilder;
             antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
 
             // Retrieve the root of the custom tree
@@ -394,10 +391,9 @@ namespace ualg {
         ENVBACKENDParser parser(&tokens);
         tree::ParseTree *tree = parser.proofaction();
 
-        // Create the tree builder
-        ENVBACKENDTermBuilder treeBuilder;
         // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0) {
+        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
+            ENVBACKENDTermBuilder treeBuilder;
             antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
 
             // Retrieve the root of the custom tree
@@ -420,10 +416,9 @@ namespace ualg {
         ENVBACKENDParser parser(&tokens);
         tree::ParseTree *tree = parser.proofstep();
 
-        // Create the tree builder
-        ENVBACKENDTermBuilder treeBuilder;
         // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0) {
+        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
+            ENVBACKENDTermBuilder treeBuilder;
             antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
 
             // Retrieve the root of the custom tree

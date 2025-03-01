@@ -241,6 +241,10 @@ namespace ualg {
             return encodings;
         }
 
+        std::string get_input() const {
+            return tokenizer.decode(encodings);
+        }
+
         const std::set<int>& get_valid_next_tokens() const {
             return valid_next_tokens;
         }

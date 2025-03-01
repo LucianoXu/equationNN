@@ -73,6 +73,7 @@ PYBIND11_MODULE(envbackend, m) {
         .def(py::init<const NextTokenMachine&>())
         .def("copy", &NextTokenMachine::copy)
         .def_property_readonly("encodings", &NextTokenMachine::get_encodings)
+        .def_property_readonly("input", &NextTokenMachine::get_input)
         .def_property_readonly("valid_next_tokens", &NextTokenMachine::get_valid_next_tokens)
         .def("push_token", py::overload_cast<int>(&NextTokenMachine::push_token))
         .def("push_token", py::overload_cast<string>(&NextTokenMachine::push_token))
@@ -95,6 +96,17 @@ PYBIND11_MODULE(envbackend, m) {
         .value("EOS", NextTokenMachine::State::EOS)
         .value("HALT", NextTokenMachine::State::HALT)
         .export_values();
+
+    py::class_<proof_action>(m, "proof_action")
+        .def(py::init<const string&, const TermPos&, const subst&>())
+        .def_readwrite("rule_name", &proof_action::rule_name)
+        .def_readwrite("pos", &proof_action::pos)
+        .def_readwrite("subst", &proof_action::spec_subst);
+
+    py::class_<proof_step>(m, "proof_step")
+        .def(py::init<equation, proof_action>())
+        .def_readwrite("eq", &proof_step::eq)
+        .def_readwrite("act", &proof_step::act);
 
     m.def("parse_term", &parse_term, "A function that parses the term code.");
     m.def("parse_equation", &parse_equation, "A function that parses the equation code.");

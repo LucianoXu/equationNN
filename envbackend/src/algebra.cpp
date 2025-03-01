@@ -56,16 +56,17 @@ namespace ualg {
     Term::Term(const string& head) {
         this->head = head;
         this->args = {};
+        if (head == "~" && args.size() == 0) {
+            throw runtime_error("Empty head.");
+        }
     }
 
     Term::Term(const string& head, const vector<TermPtr>& args) {
         this->head = head;
         this->args = args;
-    }
-
-    Term::Term(const string& head, vector<TermPtr>&& args) {
-        this->head = head;
-        this->args = std::move(args);
+        if (head == "~" && args.size() == 0) {
+            throw runtime_error("Empty head, const &");
+        }
     }
 
     const string& Term::get_head() const {
@@ -166,7 +167,7 @@ namespace ualg {
         for (const auto& arg : args) {
             new_args.push_back(arg->replace_term(pattern, replacement));
         }
-        return make_shared<const Term>(this->head, std::move(new_args));
+        return make_shared<const Term>(this->head, new_args);
     }
 
     TermPtr Term::replace_at(const TermPos& pos, TermPtr new_subterm) const {
@@ -185,7 +186,7 @@ namespace ualg {
                 new_args.push_back(args[i]);
             }
         }
-        return make_shared<const Term>(this->head, std::move(new_args));
+        return make_shared<const Term>(this->head, new_args);
     }
 
     void _get_all_subterms(TermPtr term, TermPos pos_prefix, vector<pair<TermPos, TermPtr>>& results) {
@@ -267,7 +268,7 @@ namespace ualg {
         for (const auto& arg : term->get_args()) {
             new_args.push_back(apply_subst(arg, s));
         }
-        return make_shared<const Term>(term->get_head(), std::move(new_args));
+        return make_shared<const Term>(term->get_head(), new_args);
     }
 
     optional<subst> _match(stack<pair<TermPtr, TermPtr>>& ineqs, const set<std::string>& vars, subst& spec_subst) {
