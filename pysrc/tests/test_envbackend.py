@@ -1,5 +1,6 @@
-from env import env
-from model import *
+from ..env import env
+from ..model import *
+from ..ext_solver import vampire_solve
 
 def test_parse_term():
     term = env.parse_term("f(a g(b c))")
@@ -162,7 +163,6 @@ def test_push_string():
     assert machine.push_string("*(*(*(x x) x) x)")
 
 def test_vampire_solver():
-    from ext_solver import vampire_solve
 
     alg_code = '''
     [function]

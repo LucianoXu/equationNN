@@ -6,7 +6,6 @@ from typing import Optional, Tuple
 import torch
 import torch.nn.functional as F
 from torch import nn
-from env import env
 
 @dataclass
 class ModelArgs:

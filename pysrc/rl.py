@@ -1,7 +1,14 @@
-from model import *
-from env import env, Scenario
-import multiprocessing as mp
-from evaluation import test_intere_mp
+from .model import *
+from .env import env, Scenario
+from .evaluation import test_intere_mp
+
+import torch
+from torch.utils.tensorboard.writer import SummaryWriter
+from torch.optim.adamw import AdamW
+from tqdm import tqdm
+from typing import Literal, Optional
+from elab import ELab, set_adamw_params, get_grad_norm
+
 
 class Trace:
     def __init__(self, equation: env.Equation, steps: list[tuple[str, torch.Tensor, float]]):
@@ -199,17 +206,6 @@ def gen_group(model,
         progress_bar.update(1)
 
     return [Trace(env.problem, trace) for env, trace in zip(envs, traces)]
-
-
-import torch
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard.writer import SummaryWriter
-from torch.optim.adamw import AdamW
-from tqdm import tqdm
-from typing import Literal, Optional
-from elab import ELab, set_adamw_params, get_grad_norm
-
-from model import ModelArgs, Llama3, SmallArgs
 
 
 def construct_pseudo_loss(sol_traces: list[Trace], device: str|torch.device) -> tuple[float, torch.Tensor]:

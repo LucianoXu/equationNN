@@ -1,8 +1,7 @@
 
-from env import env, Scenario
-from ext_solver import vampire_solve, vampire_solve_mp, VampireResult
+from .env import env, Scenario
+from .ext_solver import vampire_solve, vampire_solve_mp, VampireResult
 from math import log
-import json
 
 def intere_fun(vampire_res: VampireResult, size: int) -> float:
     '''

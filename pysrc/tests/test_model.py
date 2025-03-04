@@ -1,4 +1,4 @@
-from model import *
+from ..model import *
 
 def test_mask_calc():
     batch_size = 3

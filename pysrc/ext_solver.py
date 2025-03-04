@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Optional
 from pathlib import Path
 from subprocess import Popen, PIPE
-from env import env, Scenario
+from .env import env, Scenario
 import re
 
 # Vampire Solver

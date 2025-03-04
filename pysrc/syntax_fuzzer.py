@@ -1,6 +1,6 @@
 from typing import Optional
 from tqdm import tqdm
-from env import env, Scenario
+from .env import env, Scenario
 import random
 
 def gen_examples(scenario: Scenario, count: int, max_step: int) -> list[env.Equation]:

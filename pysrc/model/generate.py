@@ -1,5 +1,5 @@
 from .model import *
-from env import env, Scenario
+from ..env import env, Scenario
 
 def constrained_sample(
     logits: torch.Tensor, 

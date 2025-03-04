@@ -8,7 +8,9 @@ class Scenario:
 
         if isinstance(alg, str):
             parse_res = env.parse_alg(alg)
-            assert parse_res is not None, "Failed to parse the algebra"
+            if parse_res is None:
+                raise ValueError("Failed to parse the algebra description:\n\n" + alg)
+            assert parse_res is not None
             self.alg = parse_res
         else:
             self.alg = alg
