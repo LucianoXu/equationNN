@@ -10,6 +10,7 @@ def intere_fun(vampire_res: VampireResult, size: int) -> float:
     # return log((vampire_res.elapsed_time + 0.001) / size)
     return log(vampire_res.generated_clauses / (size + 42))
 
+
 def test_intere(args: tuple[str, Scenario, env.Equation, float]) -> float:
     '''
     Test the interestingness function.
@@ -24,6 +25,7 @@ def test_intere(args: tuple[str, Scenario, env.Equation, float]) -> float:
     
     return intere_fun(res, size)
 
+
 def test_intere_mp(vampire: str, scenario: Scenario, examples: list[env.Equation], timeout: float = 10) -> list[float]:
     '''
     Use multiprocess to test the interestingness function.
@@ -31,6 +33,18 @@ def test_intere_mp(vampire: str, scenario: Scenario, examples: list[env.Equation
     vampire_results = vampire_solve_mp(vampire, scenario, examples, timeout)
 
     return [intere_fun(res, example.size) for res, example in zip(vampire_results, examples)]
+
+
+def test_intere_mp_args(vampire: str, scenario: Scenario, examples: list[env.Equation], timeout: float = 10) -> list[tuple[int, int, float]]:
+    '''
+    Use multiprocess to test the interestingness function.
+
+    Output: a list of tuples (size, complexity, interestingness)
+    '''
+    vampire_results = vampire_solve_mp(vampire, scenario, examples, timeout)
+
+    return [(example.size, res.generated_clauses, intere_fun(res, example.size)) for res, example in zip(vampire_results, examples)]
+    
 
 def calc_avg_intere(vampire: str, scenario: Scenario, examples: list[env.Equation], timeout: float = 10) -> float:
     '''

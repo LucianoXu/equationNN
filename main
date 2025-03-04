@@ -11,6 +11,14 @@ if __name__ == '__main__':
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    from pysrc.tasks import task_ntok_machine
+    task_ntok_machine.build_parser(subparsers)
+    # ./main ntok_machine algdesc/OMLext.alg
+
+    from pysrc.tasks import task_synfuzzer
+    task_synfuzzer.build_parser(subparsers)
+    # ./main synfuzzer algdesc/OMLext.alg -c 100 -m 10
+
     from pysrc.tasks import task_adv_rl
     task_adv_rl.build_parser(subparsers)
 
@@ -19,6 +27,18 @@ if __name__ == '__main__':
     
     from pysrc.tasks import task_syn_gen_examples
     task_syn_gen_examples.build_parser(subparsers)
+
+    from pysrc.tasks import task_parse_examples
+    task_parse_examples.build_parser(subparsers)
+    # ./main parse_examples algdesc/OMLext.alg algdesc/OMLext_examples.txt
+
+    from pysrc.tasks import task_test_intere_example
+    task_test_intere_example.build_parser(subparsers)
+    # ./main test_intere_example algdesc/OMLext.alg algdesc/OMLext_examples.txt -o paper_eval.csv
+
+    from pysrc.tasks import task_test_intere_synfuzzer
+    task_test_intere_synfuzzer.build_parser(subparsers)
+    # ./main test_intere_synfuzzer algdesc/OMLext.alg algdesc/OMLext_examples.txt -c 100 -m 10 -o synfuzzer_eval.csv
 
     # Parse arguments
     args = parser.parse_args()

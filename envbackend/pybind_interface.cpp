@@ -41,6 +41,7 @@ PYBIND11_MODULE(envbackend, m) {
     py::class_<Signature, shared_ptr<Signature>>(m, "Signature")
         .def_property_readonly("func_symbols", &Signature::get_func_symbols)
         .def_property_readonly("variables", &Signature::get_variables)
+        .def("term_valid", &Signature::term_valid)
         .def("__str__", &Signature::to_string);
 
     py::class_<Algebra, shared_ptr<Algebra>>(m, "Algebra")
