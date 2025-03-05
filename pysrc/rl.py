@@ -11,16 +11,22 @@ from elab import ELab, set_adamw_params, get_grad_norm
 
 
 class Trace:
-    def __init__(self, equation: env.Equation, steps: list[tuple[str, torch.Tensor, float]]):
-        self.equation = equation # the final equation
+    def __init__(self, init_eq: env.Equation, steps: list[tuple[str, torch.Tensor, float]], final_eq: env.Equation):
+        self.init_eq = init_eq
+        self.final_eq = final_eq
         self.steps = steps
 
     def __str__(self):
-        return str(self.equation) + " : " + str(self.steps)
+        res = "Initial equation: " + str(self.init_eq) + "\n" 
+        res += "\n".join([str(step) for step in self.steps]) + "\n"
+        res += "Final equation: " + str(self.final_eq) + "\n"
+        return res
 
 def interestingness(equation: env.Equation, proof_step: int) -> float:
     '''
     Calculate the interestingness of the equation.
+
+    (The interestingness function is for adversarial reinforcement learning training.)
     '''
     size = equation.lhs.get_term_size() + equation.rhs.get_term_size() + 1
     return 20 * proof_step / size
@@ -30,7 +36,7 @@ class GenEnv:
     The environment for the equation generation task.
 
     The reward is defined as follows:
-    - An instant reward of the current interestingness is given as the reward.
+    - A reward of the final interestingness is given in the end (in the rl training, instead of step function here)
     - If any step tries to exceed the state length limit, a penalty of -1 is given.
     '''
     def __init__(self, scenario: Scenario, problem : env.Equation):
@@ -113,6 +119,7 @@ def solve_group(model, scenario, problems: list[str], step_limit: int, state_len
 
     progress_bar = tqdm(total=step_limit)
 
+    remaining_envs = envs
 
     # NOTICE: multiprocessing acceleration is possible here
 
@@ -120,38 +127,40 @@ def solve_group(model, scenario, problems: list[str], step_limit: int, state_len
 
         # check the finished envs
         temp_envs : list[SolveEnv] = []
-        for i in range(len(envs)):
-            if envs[i].problem.lhs == envs[i].problem.rhs:
+        for i in range(len(remaining_envs)):
+            # if lhs == rhs, the problem is solved
+            if remaining_envs[i].problem.lhs == remaining_envs[i].problem.rhs:
                 env_idx_mapping = env_idx_mapping[:i] + env_idx_mapping[i+1:]
             else:
-                temp_envs.append(envs[i])
+                temp_envs.append(remaining_envs[i])
 
         # if all the envs are finished, break
         if len(temp_envs) == 0:
             break
 
-        envs = temp_envs
+        # the unfinished ones
+        remaining_envs = temp_envs
 
-        finished_count = batch_size - len(envs)
+        finished_count = batch_size - len(remaining_envs)
 
         # update the description of the progress bar
         progress_bar.desc = f"Solving in Envs({finished_count}/{batch_size})"
 
         # generate the batched solution
-        batch = [env.state for env in envs]
+        batch = [env.state for env in remaining_envs]
         actions, log_probs = batch_generation(model, scenario, batch, context_length, T)
 
         reward_results : list[float] = []
-        for i in range(len(envs)):
-            # the generation may be unfinished and the C++ parser will report an warning
-            reward_results.append(envs[i].step(actions[i], state_len_limit))
+        for i in range(len(remaining_envs)):
+            # the generation may be unfinished and the C++ parser will report an warning. This is not a problem.
+            reward_results.append(remaining_envs[i].step(actions[i], state_len_limit))
 
         for i, reward in enumerate(reward_results):
             traces[env_idx_mapping[i]].append((actions[i], log_probs[i], reward))
 
         progress_bar.update(1)
 
-    return [Trace(problem, trace) for problem, trace in zip(parsed_problems, traces)]
+    return [Trace(parsed_problems[i], traces[i], envs[i].problem) for i in range(batch_size)]
 
 
 
@@ -177,13 +186,15 @@ def gen_group(model,
 
     # create initial equations and environments
     x = list(scenario.sig.variables)[0]
-    envs = [GenEnv(scenario, env.Equation(env.Term(x), env.Term(x))) for _ in range(batch_size)]
+    init_eq = env.Equation(env.Term(x), env.Term(x))
+    envs = [GenEnv(scenario, env.Equation(init_eq)) for _ in range(batch_size)]
 
     # proceed the examples
     traces: list[list[tuple[str, torch.Tensor, float]]] = [[] for _ in range(batch_size)]
 
     progress_bar = tqdm(total=step_limit)
 
+    remaining_envs = envs
 
     # NOTICE: multiprocessing acceleration is possible here
 
@@ -192,20 +203,20 @@ def gen_group(model,
         progress_bar.desc = f"Generating in Envs ({batch_size})"
 
         # generate the batch
-        batch = [env.state for env in envs]
+        batch = [env.state for env in remaining_envs]
         actions, log_probs = batch_generation(model, scenario, batch, context_length, T)
 
         reward_results : list[float] = []
-        for i in range(len(envs)):
-            # the generation may be unfinished and the C++ parser will report an warning
-            reward_results.append(envs[i].step(actions[i], state_len_limit))
+        for i in range(len(remaining_envs)):
+            # the generation may be unfinished and the C++ parser will report an warning. This is not a problem.
+            reward_results.append(remaining_envs[i].step(actions[i], state_len_limit))
 
         for i, reward in enumerate(reward_results):
             traces[i].append((actions[i], log_probs[i], reward))
 
         progress_bar.update(1)
 
-    return [Trace(env.problem, trace) for env, trace in zip(envs, traces)]
+    return [Trace(init_eq, trace, env.problem) for env, trace in zip(envs, traces)]
 
 
 def construct_pseudo_loss(sol_traces: list[Trace], device: str|torch.device) -> tuple[float, torch.Tensor]:
@@ -402,7 +413,7 @@ def adv_rl_train(
                     gen_traces = gen_group(gen_model, scenario, batch_size, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
                     
                     # solve the problems
-                    equations = [str(trace.equation) for trace in gen_traces]
+                    equations = [str(trace.final_eq) for trace in gen_traces]
                     sol_traces = solve_group(sol_model, scenario, equations, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
 
                     ###########################
@@ -413,7 +424,7 @@ def adv_rl_train(
                     # add the final reward of interestingness according to the solution result
                     for i in range(len(gen_traces)):
                         original = gen_traces[i].steps[-1]
-                        gen_traces[i].steps[-1] = (original[0], original[1], original[2] + interestingness(gen_traces[i].equation, len(sol_traces[i].steps)))
+                        gen_traces[i].steps[-1] = (original[0], original[1], original[2] + interestingness(gen_traces[i].final_eq, len(sol_traces[i].steps)))
 
                     gen_reward, gen_J = construct_pseudo_loss(gen_traces, device)
 
@@ -467,11 +478,11 @@ def adv_rl_train(
                 # test generation result
                 with torch.no_grad():
                     demo_traces = gen_group(gen_model, scenario, 10, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
-                    demo_eqs = [str(trace.equation) for trace in demo_traces]
+                    demo_eqs = [str(trace.final_eq) for trace in demo_traces]
                     demo_sols = solve_group(sol_model, scenario, demo_eqs, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
                     demo_record = ""
                     for i in range(len(demo_traces)):
-                        demo_record += f"{demo_eqs[i]}\nSOL-LENGTH {len(demo_sols[i].steps)}, INTERESTINGNESS {interestingness(demo_traces[i].equation, len(demo_sols[i].steps))}\n"
+                        demo_record += f"{demo_eqs[i]}\nSOL-LENGTH {len(demo_sols[i].steps)}, INTERESTINGNESS {interestingness(demo_traces[i].final_eq, len(demo_sols[i].steps))}\n"
 
                 # output
                 print(f"{ckpt_folder}\t({learn_model}) Step {t}")
@@ -607,7 +618,7 @@ def gen_rl_train_by_vampire(
                     gen_traces = gen_group(gen_model, scenario, batch_size, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
                     
                     # solve the problems
-                    equations = [trace.equation for trace in gen_traces]
+                    equations = [trace.final_eq for trace in gen_traces]
                     intere_vals = test_intere_mp(vampire, scenario, equations, timeout)
 
                     ###########################
@@ -653,7 +664,7 @@ def gen_rl_train_by_vampire(
                 # test generation result
                 with torch.no_grad():
                     demo_traces = gen_group(gen_model, scenario, 10, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
-                    demo_eqs = [trace.equation for trace in demo_traces]
+                    demo_eqs = [trace.final_eq for trace in demo_traces]
                     demo_intere_vals = test_intere_mp(vampire, scenario, demo_eqs, timeout)
                     demo_record = ""
                     for i in range(len(demo_traces)):

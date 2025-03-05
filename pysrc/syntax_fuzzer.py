@@ -1,13 +1,14 @@
 from typing import Optional
 from tqdm import tqdm
 from .env import env, Scenario
+from .proof import ProofTrace
 import random
 
-def gen_examples(scenario: Scenario, count: int, max_step: int) -> list[env.Equation]:
+def gen_examples(scenario: Scenario, count: int, max_step: int) -> list[ProofTrace]:
     '''
     Generate a list of examples using a direct syntax fuzzer.
     '''
-    examples : list[env.Equation] = []
+    traces : list[ProofTrace] = []
     ntok_machine = env.NextTokenMachine(scenario.alg)
     # push in 'x = x :'
     random_var = list(scenario.alg.signature.variables)[0]
@@ -17,7 +18,12 @@ def gen_examples(scenario: Scenario, count: int, max_step: int) -> list[env.Equa
     for _ in tqdm(range(count), desc="Generating examples"):
         # copy the next token machine
         eq = env.Equation(init_eq)
+
+        # the proof trace
+        trace : list[env.proof_step] = []
+
         for _ in range(random.randint(1, max_step)):
+
             # push the problem
             ntok_machine_copy = ntok_machine.copy()
             if not ntok_machine_copy.push_string(str(eq) + " : "):
@@ -42,7 +48,12 @@ def gen_examples(scenario: Scenario, count: int, max_step: int) -> list[env.Equa
             if scenario.kernel.action_by_code(eq, scenario.tokenizer.decode(act_encodings)) != env.ACT_RESULT.SUCCESS:
                 raise Exception(f"Cannot apply the action {scenario.tokenizer.decode(act_encodings)} to the equation {eq}.")
 
-        # append the equation
-        examples.append(eq)
+            # append the equation
+            proof_step = env.parse_proof_step(ntok_machine_copy.finished_session)
+            if proof_step is None:
+                raise ValueError(f"Cannot parse the proof action: {ntok_machine_copy.finished_session}.")
+            trace.append(proof_step)
 
-    return examples
+        traces.append(ProofTrace(scenario, trace, eq))
+
+    return traces

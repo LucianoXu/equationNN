@@ -13,11 +13,25 @@ namespace ualg {
         std::string rule_name;
         TermPos pos;
         subst spec_subst;
+
+        std::string to_string() const {
+            std::string res = rule_name + " ";
+            for (const auto& p : pos) {
+                res += std::to_string(p) + " ";
+            }
+
+            res += ualg::to_string(spec_subst);
+            return res;
+        }
     };
 
     struct proof_step {
         equation eq;
         proof_action act;
+
+        std::string to_string() const {
+            return eq.to_string() + " : " + act.to_string();
+        }
     };
 
     enum ACT_RESULT {
@@ -242,6 +256,17 @@ namespace ualg {
         }
 
         std::string get_input() const {
+            return tokenizer.decode(encodings);
+        }
+
+        std::string get_finished_session() const {
+            if (state != HALT) {
+                throw std::runtime_error("The session is not finished:\n" + to_string());
+            }
+            // create a new list without the frist <SOS> token and the last <EOS> token
+            std::vector<int> encodings = this->encodings;
+            encodings.erase(encodings.begin());
+            encodings.pop_back();
             return tokenizer.decode(encodings);
         }
 

@@ -9,6 +9,7 @@ def build_parser(subparsers: argparse._SubParsersAction):
     parser.add_argument("alg_desc", type=str, help="Path to the algorithm description.")
     parser.add_argument("example_file", type=str, help="Path to the example file.")
     parser.add_argument("-o", "--output", type=str, help="Path to the output file.", default="output.csv")
+    parser.add_argument("--timeout", type=float, default=5, help="Timeout for Vampire.")
     parser.add_argument("--vampire", type=str, help="Path to the vampire executable.", default="vampire")
     parser.set_defaults(func=task)
 
@@ -22,7 +23,7 @@ def task(parsed_args: argparse.Namespace):
 
     examples = parse_examples(scenario, parsed_args.example_file)
 
-    result = test_intere_mp_args(parsed_args.vampire, scenario, examples)
+    result = test_intere_mp_args(parsed_args.vampire, scenario, examples, timeout=parsed_args.timeout)
 
     with open(parsed_args.output, 'w') as f:
         writer = csv.writer(f)

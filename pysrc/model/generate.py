@@ -135,7 +135,7 @@ def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]
     '''
     Generate the output for each beam using the model, with temperature scaling.
 
-    Return the output results (without <EOS>) and the log probabilities of the output results.
+    Return the output results (without "<EOS>") and the log probabilities of the output results.
     '''
 
     # prepare the next token machines
@@ -200,8 +200,3 @@ def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]
                         raise Exception(f"Invalid token {next_tokens[i]} pushed to the next token machine. Machine state:\n{machines[idx].state}")
 
     return outputs, acc_log_probs
-
-
-if __name__ == "__main__":
-    pass
-    

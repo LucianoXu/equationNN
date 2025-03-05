@@ -75,6 +75,7 @@ PYBIND11_MODULE(envbackend, m) {
         .def("copy", &NextTokenMachine::copy)
         .def_property_readonly("encodings", &NextTokenMachine::get_encodings)
         .def_property_readonly("input", &NextTokenMachine::get_input)
+        .def_property_readonly("finished_session", &NextTokenMachine::get_finished_session)
         .def_property_readonly("valid_next_tokens", &NextTokenMachine::get_valid_next_tokens)
         .def("push_token", py::overload_cast<int>(&NextTokenMachine::push_token))
         .def("push_token", py::overload_cast<string>(&NextTokenMachine::push_token))
@@ -102,16 +103,20 @@ PYBIND11_MODULE(envbackend, m) {
         .def(py::init<const string&, const TermPos&, const subst&>())
         .def_readwrite("rule_name", &proof_action::rule_name)
         .def_readwrite("pos", &proof_action::pos)
-        .def_readwrite("subst", &proof_action::spec_subst);
+        .def_readwrite("subst", &proof_action::spec_subst)
+        .def("__str__", &proof_action::to_string);
 
     py::class_<proof_step>(m, "proof_step")
         .def(py::init<equation, proof_action>())
         .def_readwrite("eq", &proof_step::eq)
-        .def_readwrite("act", &proof_step::act);
+        .def_readwrite("act", &proof_step::act)
+        .def("__str__", &proof_step::to_string);
 
     m.def("parse_term", &parse_term, "A function that parses the term code.");
     m.def("parse_equation", &parse_equation, "A function that parses the equation code.");
     m.def("parse_alg", &parse_alg, "A function that parses the algebra code.");
+    m.def("parse_proof_action", &parse_proof_action, "A function that parses the proof action code.");
+    m.def("parse_proof_step", &parse_proof_step, "A function that parses the proof step code.");
     m.def("check_action", &check_action, "A function that checks whether the action is valid.");
 
     m.def("vampire_problem_encode", &vampire_problem_encode, "A function that generates the Vampire encode for the given problem.");

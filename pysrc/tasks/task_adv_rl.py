@@ -5,7 +5,7 @@ from ..rl import *
 def build_parser(subparsers: argparse._SubParsersAction):
     parser = subparsers.add_parser("adv_rl", help="Execute advanced RL training.")
     parser.add_argument("alg_desc", type=str, help="Path to the algorithm description.")
-    parser.add_argument("--ckpt_folder", type=str, help="Path to the checkpoint folder.", default="./ckpt/temp")
+    parser.add_argument("--ckpt", type=str, help="Path to the checkpoint folder.", default="./ckpt/temp")
     parser.add_argument("--init", action="store_true", help="Initialize training models.")
     parser.add_argument("--mode", type=str, default='sol', choices=['sol', 'gen'], help="Learning mode (sol/gen).")
     parser.add_argument("--device", type=str, default='cuda', help="Device to use (cuda/cpu).")
@@ -35,12 +35,12 @@ def task(parsed_args: argparse.Namespace):
     )
 
     if parsed_args.init:
-        # clean the folder ckpt_folder
+        # clean the folder ckpt
         import shutil, os
-        shutil.rmtree(parsed_args.ckpt_folder, ignore_errors=True)
-        os.makedirs(parsed_args.ckpt_folder)
+        shutil.rmtree(parsed_args.ckpt, ignore_errors=True)
+        os.makedirs(parsed_args.ckpt)
         # initialize the models
-        init_sol_gen_models(gen_model, sol_model, parsed_args.ckpt_folder, device)
+        init_sol_gen_models(gen_model, sol_model, parsed_args.ckpt, device)
 
     adv_rl_train(
         gen_model = gen_model,
@@ -49,7 +49,7 @@ def task(parsed_args: argparse.Namespace):
         state_len_limit = 100,
         context_length = args.context_length,
 
-        ckpt_folder = parsed_args.ckpt_folder,
+        ckpt_folder = parsed_args.ckpt,
         input_version_name = 'none' if parsed_args.init else 'latest',
 
         lr = 2e-6,

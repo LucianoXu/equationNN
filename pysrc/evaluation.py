@@ -8,7 +8,7 @@ def intere_fun(vampire_res: VampireResult, size: int) -> float:
     Compute the interestingness of a problem.
     '''
     # return log((vampire_res.elapsed_time + 0.001) / size)
-    return log(vampire_res.generated_clauses / (size + 42))
+    return log(vampire_res.generated_clauses / (size**2 + 3))
 
 
 def test_intere(args: tuple[str, Scenario, env.Equation, float]) -> float:
@@ -51,22 +51,5 @@ def calc_avg_intere(vampire: str, scenario: Scenario, examples: list[env.Equatio
     Calculate the average interestingness of a list of examples.
     '''
     return sum(test_intere_mp(vampire, scenario, examples, timeout)) / len(examples)
-
-
-if __name__ == "__main__":
-    pass
-    # from gen import gen_example, signature
-    # from scenario import r_subst
-
-    # for _ in range(15):
-    #     path = gen_example(20, 3)
-    #     # print(path)
-    #     # for example in path.path:
-    #     #     if example[1] == r_subst:
-    #     #         input()
-
-    #     print("Testing interestingness ...")
-    #     interestingness = test_intere([term for term, _, _, _, _ in path.path])
-    #     print(interestingness)
 
 
