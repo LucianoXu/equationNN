@@ -4,7 +4,7 @@ It is a machine learning project written in Python, with C++ backend for the uni
 ## Installation and Requirements
 
 ### Prerequisite and Dependencies
-- Compilation of the C++ backend requires a `clang++` compiler that supports the C++23 standard.
+- Compilation of the C++ backend requires a compiler that supports the C++23 standard.
 - Java installation to generate the ANLTR4 parser file.
 - Python installtion version 3.8 or later.
 - CUDA Toolkit installation.
@@ -13,6 +13,7 @@ It is a machine learning project written in Python, with C++ backend for the uni
 
 ### Installation
 1. Get the vampire solver and add it to the PATH. See https://github.com/vprover/vampire/wiki/Source-Build-for-Users.
+For linux system, they also provide compiled binaries as releases.
 
 2. Clone the repository using 
 ```

@@ -8,3 +8,5 @@ sets==0.3.2
 setuptools==68.0.0
 torch==2.5.1
 tqdm==4.66.5
+mypy==1.15.0
+tensorboard==2.19.0

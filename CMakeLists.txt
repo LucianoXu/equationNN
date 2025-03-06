@@ -68,22 +68,15 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the type of build: Debug or Release" FORCE)
 endif()
 
-# Set the compiler to clang++
-# check whether clang++ is available
-find_program(CLANGPP clang++)
-if(CLANGPP)
-    set(CMAKE_CXX_COMPILER ${CLANGPP})
-    message(STATUS "Using clang++ compiler: ${CLANGPP}")
-else()
-    message(FATAL_ERROR "clang++ compiler not found")
-endif()
 
+# check the compiler
+message(STATUS "Compiler: ${CMAKE_CXX_COMPILER_ID}")
 
 # Set build flags
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O0 -g")
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O3 -DNDEBUG")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O2 -DNDEBUG")
 elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -O2 -g")
 else()
