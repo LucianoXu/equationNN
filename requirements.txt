@@ -1,0 +1,10 @@
+ghapi==1.0.6
+nox==2025.2.9
+numpy==1.26.4
+ply==3.11
+pytest==7.4.4
+rich==13.9.4
+sets==0.3.2
+setuptools==68.0.0
+torch==2.5.1
+tqdm==4.66.5

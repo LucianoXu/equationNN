@@ -1,0 +1,49 @@
+#! /usr/bin/env python3
+
+'''
+The main entry for all tasks.
+'''
+
+import argparse
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Main entry for multiple functions.")
+
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    from pysrc.tasks import task_ntok_machine
+    task_ntok_machine.build_parser(subparsers)
+    # ./main ntok_machine algdesc/OMLext.alg
+
+    from pysrc.tasks import task_adv_rl
+    task_adv_rl.build_parser(subparsers)
+
+    from pysrc.tasks import task_gen_rl_vampire
+    task_gen_rl_vampire.build_parser(subparsers)
+    # ./main gen_rl_vampire algdesc/OMLext.alg --ckpt ./ckpt/OMLextGen -i --num_steps=512 --batch_size=8 --acc_steps=12 --gen_step_limit=12 -t 0.7 --save_interval=10
+    
+    from pysrc.tasks import task_syn_gen_examples
+    task_syn_gen_examples.build_parser(subparsers)
+    # ./main syn_gen_examples algdesc/OMLext.alg -c 100 -m 10
+
+    from pysrc.tasks import task_parse_examples
+    task_parse_examples.build_parser(subparsers)
+    # ./main parse_examples algdesc/OMLext.alg algdesc/OMLext_examples.txt
+
+    from pysrc.tasks import task_test_intere_example
+    task_test_intere_example.build_parser(subparsers)
+    # ./main test_intere_example algdesc/OMLext.alg algdesc/OMLext_examples.txt -o paper_eval.csv
+
+    from pysrc.tasks import task_test_intere_synfuzzer
+    task_test_intere_synfuzzer.build_parser(subparsers)
+    # ./main test_intere_synfuzzer algdesc/OML.alg -c 100 -m 10 -o synfuzzer_eval.csv
+
+    from pysrc.tasks import task_test_intere_model
+    task_test_intere_model.build_parser(subparsers)
+    # ./main test_intere_model algdesc/OML.alg --ckpt ./ckpt/OMLGen --batch_size=6 -t 0.7 -c 100 -m 10 -o model_eval.csv
+
+    # Parse arguments
+    args = parser.parse_args()
+    
+    # Call the function associated with the chosen command
+    args.func(args)

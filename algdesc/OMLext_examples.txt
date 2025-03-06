@@ -1,0 +1,48 @@
+% A.2
+% (1.1)
+~(sconj(x y)) = simp(x ~(y))
+
+% (1.2)
+~(simp(x y)) = sconj(x ~(y))
+
+% (2.1)
+sconj(x |(y z)) = |(sconj(x y) sconj(x z))
+
+% (2.2)
+simp(x &(y z)) = &(simp(x y) simp(x z))
+
+% Sasaki conjunction including two variables
+% (1)
+x = sconj(x x)
+
+% (2)
+sconj(x y) = sconj(sconj(x y) sconj(y x))
+
+% (3)
+sconj(x sconj(y ~(x))) = sconj(sconj(x y) ~(y))
+
+% Sasaki conjunction including three variables
+% (1) Success
+% fof(conj, conjecture, ![A, B, C] : sconj(sconj(A, B), C) = sconj(sconj(A, B), sconj(A, C))).
+
+% (2) Success
+% fof(conj, conjecture, ![A, B, C] : sconj(sconj(A, B), C) = sconj(A, sconj(sconj(A, B), C))).
+
+% Sasaki implication including two variables
+% (1) Success
+% fof(conj, conjecture, ![A, B] : simp(A, simp(A, B)) = simp(A, B)).
+
+% (2) Timeout
+% fof(conj, conjecture, ![A, B] : simp(A, simp(B, A)) = simp(sconj(A, B), B)).
+
+% (3) Success
+% fof(conj, conjecture, ![A, B] : simp(simp(A, B), A) = A).
+
+% (4) Success
+% fof(conj, conjecture, ![A, B] : simp(simp(A, B), n(A)) = j(n(A), n(B))).
+
+% (5) Timeout
+% fof(conj, conjecture, ![A, B] : simp(simp(A, B), B) = simp(n(A), B)).
+
+% Timeout
+% fof(conj, conjecture, ![A, B, C] : simp(B, simp(A, simp(simp(A, B), C))) = simp(A, simp(simp(A, B), C))).
