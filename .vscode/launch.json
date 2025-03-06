@@ -1,0 +1,26 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug MAIN Project with LLDB",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/envbackend/MAIN",  // Adjust this path to point to your executable
+            "args": [],  // Optional: add program arguments here
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false,
+            "console": "internalConsole",
+            "preLaunchTask": "Compile Debug Version"  // This will trigger the build before debugging
+        } 
+    ]
+}
