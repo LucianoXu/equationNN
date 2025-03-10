@@ -15,13 +15,18 @@ namespace ualg {
         subst spec_subst;
 
         std::string to_string() const {
-            std::string res = rule_name + " ";
-            for (const auto& p : pos) {
-                res += std::to_string(p) + " ";
+            if (rule_name == "SUBST") {
+                return "SUBST " + spec_subst.begin()->first + " " + spec_subst.begin()->second->to_string();
             }
-
-            res += ualg::to_string(spec_subst);
-            return res;
+            else {
+                std::string res = rule_name + " (";
+                for (const auto& p : pos) {
+                    res += std::to_string(p) + " ";
+                }
+                res += ") ";
+                res += ualg::to_string(spec_subst);
+                return res;
+            }
         }
     };
 

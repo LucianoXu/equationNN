@@ -160,6 +160,9 @@ namespace ualg {
         return res;
     }
 
+    /**
+     * @brief Check wether the code is valid. No <SOS> or <EOS> is needed here.
+     */
     bool check_action(const SymbolKernel& kernel, std::string code) {
         proof_step step = parse_proof_step(code).value();
         auto res = kernel.action(step.eq, step.act);

@@ -11,21 +11,33 @@ if __name__ == '__main__':
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    from pysrc.tasks import task_get_vocab
+    task_get_vocab.build_parser(subparsers)
+    # ./main get_vocab algdesc/OMLext.alg
+
     from pysrc.tasks import task_ntok_machine
     task_ntok_machine.build_parser(subparsers)
     # ./main ntok_machine algdesc/OMLext.alg
 
-    from pysrc.tasks import task_adv_rl
-    task_adv_rl.build_parser(subparsers)
-
-    from pysrc.tasks import task_gen_rl_vampire
-    task_gen_rl_vampire.build_parser(subparsers)
-    # ./main gen_rl_vampire algdesc/OMLext.alg --ckpt ./ckpt/OMLextGen -i --num_steps=512 --batch_size=8 --acc_steps=12 --gen_step_limit=12 -t 0.7 --save_interval=10
-    
     from pysrc.tasks import task_syn_gen_examples
     task_syn_gen_examples.build_parser(subparsers)
     # ./main syn_gen_examples algdesc/OMLext.alg -c 100 -m 10
 
+    from pysrc.tasks import task_gen_valid_check
+    task_gen_valid_check.build_parser(subparsers)
+    # ./main gen_valid_check algdesc/OMLext.alg -c 100 -m 10
+
+    from pysrc.tasks import task_sol_rl_fuzzer
+    task_sol_rl_fuzzer.build_parser(subparsers)
+    # ./main sol_rl_fuzzer algdesc/OML.alg --ckpt ./ckpt/OMLSol -i --num_steps=512 --batch_size=8 --acc_steps=12 --gen_step_limit=4 --sol_step_limit=12 -t 0.7 --save_interval=10
+
+    from pysrc.tasks import task_gen_rl_vampire
+    task_gen_rl_vampire.build_parser(subparsers)
+    # ./main gen_rl_vampire algdesc/OMLext.alg --ckpt ./ckpt/OMLextGen -i --num_steps=512 --batch_size=8 --acc_steps=12 --gen_step_limit=12 -t 0.7 --save_interval=10
+
+    from pysrc.tasks import task_adv_rl
+    task_adv_rl.build_parser(subparsers)
+    
     from pysrc.tasks import task_parse_examples
     task_parse_examples.build_parser(subparsers)
     # ./main parse_examples algdesc/OMLext.alg algdesc/OMLext_examples.txt
