@@ -84,6 +84,10 @@ class SolveEnv:
     def state(self) -> str:
         return str(self.problem) + " : "
     
+    @property
+    def stopped(self) -> bool:
+        return self.problem.lhs == self.problem.rhs
+    
     def step(self, action: str, state_len_limit: int) -> float:
         '''
         Notice that the state length limit include the '<SOS>' token and the ':' token.
@@ -96,7 +100,7 @@ class SolveEnv:
         if res != env.ACT_RESULT.SUCCESS:
             return 0.
 
-        # check whether the state length limit is reached
+        # check whether the state length limit is reached （ +2 because of the <SOS> and <EOS> token)
         state_len = len(self.scenario.tokenizer.encode(str(temp_eq))) + 2
         if state_len > state_len_limit:
             return 0.
@@ -104,7 +108,7 @@ class SolveEnv:
         self.problem = temp_eq
 
         # check whether the problem is solved
-        if self.problem.lhs == self.problem.rhs:
+        if self.stopped:
             return 1.
 
         return 0.
@@ -116,6 +120,7 @@ def solve_group(model, scenario, problems: list[str], step_limit: int, state_len
     '''
     parsed_problems : list[env.Equation] = [env.parse_equation(problem) for problem in problems]    # type: ignore
     envs = [SolveEnv(scenario, problem) for problem in parsed_problems]
+    # the mapping from the index in remained envs to the index in the original envs
     env_idx_mapping = [i for i in range(len(envs))]
     batch_size = len(envs)
 
@@ -132,11 +137,11 @@ def solve_group(model, scenario, problems: list[str], step_limit: int, state_len
 
         # check the finished envs
         temp_envs : list[SolveEnv] = []
+        temp_env_idx_mapping : list[int] = []
         for i in range(len(remaining_envs)):
-            # if lhs == rhs, the problem is solved
-            if remaining_envs[i].problem.lhs == remaining_envs[i].problem.rhs:
-                env_idx_mapping = env_idx_mapping[:i] + env_idx_mapping[i+1:]
-            else:
+            # if the problem is solved
+            if not remaining_envs[i].stopped:
+                temp_env_idx_mapping.append(env_idx_mapping[i])
                 temp_envs.append(remaining_envs[i])
 
         # if all the envs are finished, break
@@ -145,6 +150,7 @@ def solve_group(model, scenario, problems: list[str], step_limit: int, state_len
 
         # the unfinished ones
         remaining_envs = temp_envs
+        env_idx_mapping = temp_env_idx_mapping
 
         finished_count = batch_size - len(remaining_envs)
 
