@@ -54,6 +54,13 @@ See the task scripts to know the command line arguments. In the `main` entry, th
 The .vscode directory contains the configurations for compilation/debugging within VSCode.
 
 
+## Trouble Shooting
+If you compileed the C++ backend but the library cannot be imported in Python, with errors like
+```
+ImportError: cannot import name 'envbackend' from 'build.Debug.envbackend' (unknown location)
+```
+check whether you are using the same Python installation for C++ compilation and running the code. If not, you have to specify the Python interpreter using the `-DPYTHON_EXECUTABLE` flag for `cmake`.
+
 ## Code of Contribute
 Work on you on branch and merge it into `main` before pushing. Don't work on `main` directly.
 Follow the structure in `main` and `pysrc/tasks` to archive the valuable experiments you composed.

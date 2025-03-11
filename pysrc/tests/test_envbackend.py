@@ -71,7 +71,7 @@ def test_tokenizer():
 def test_next_token_machine():
     alg = env.parse_alg(algebra_code)
     assert alg is not None
-    machine = env.NextTokenMachine(alg)
+    machine = env.NextTokenMachine(alg, True)
     assert machine.push_token("zero")
     assert machine.push_token("=")
     assert machine.push_token("x")
@@ -80,7 +80,7 @@ def test_next_token_machine():
 def test_next_token_machine_copy():
     alg = env.parse_alg(algebra_code)
     assert alg is not None
-    machine = env.NextTokenMachine(alg)
+    machine = env.NextTokenMachine(alg, True)
     machine_copy = machine.copy()
 
     assert machine.push_token("zero")
@@ -140,7 +140,7 @@ def test_gen_valid_check():
     model = Llama3(model_args, device='cuda')
 
     for i in range(100):
-        res = generate(model, scenario, "")
+        res = generate(model, scenario, "", True)
         print(res)
         if not env.check_action(scenario.kernel, res):
             raise Exception("Invalid action")
@@ -158,7 +158,7 @@ def test_push_string():
     '''
     scenario = Scenario(alg_code)
 
-    machine = env.NextTokenMachine(scenario.alg)
+    machine = env.NextTokenMachine(scenario.alg, True)
 
     assert machine.push_string("*(*(*(x x) x) x)")
 

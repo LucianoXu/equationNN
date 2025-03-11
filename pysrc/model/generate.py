@@ -45,7 +45,7 @@ def constrained_sample(
     return sampled_tokens, torch.stack(probabilities)
 
 
-def generate(model, scenario: Scenario, code: str, max_len: int = 256, T: float = 1.0) -> str:
+def generate(model, scenario: Scenario, code: str, allow_subst: bool, max_len: int = 256, T: float = 1.0) -> str:
     '''
     Generate code using the model, with temperature scaling.
     
@@ -58,7 +58,7 @@ def generate(model, scenario: Scenario, code: str, max_len: int = 256, T: float 
     device = model.device
 
     # prepare the tokenizer and the next token machine
-    ntok_machine = env.NextTokenMachine(scenario.alg)
+    ntok_machine = env.NextTokenMachine(scenario.alg, allow_subst)
 
     # try to push the encoded code to the next token machine
     if not ntok_machine.push_string(code):
@@ -131,7 +131,7 @@ def batch_predict(model, scenario: Scenario, machines: list[env.NextTokenMachine
 
 
 
-def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]|list[env.NextTokenMachine], context_length: int = 256, T: float = 1.0) -> tuple[list[str], torch.Tensor]:
+def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]|list[env.NextTokenMachine],  allow_subst: bool, context_length: int = 256, T: float = 1.0) -> tuple[list[str], torch.Tensor]:
     '''
     Generate the output for each beam using the model, with temperature scaling.
 
@@ -140,7 +140,7 @@ def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]
 
     # prepare the next token machines
     if isinstance(beams[0], str):
-        machine = env.NextTokenMachine(scenario.alg)
+        machine = env.NextTokenMachine(scenario.alg, allow_subst)
         
         machines = {i:machine.copy() for i,beam in enumerate(beams)}
 
@@ -149,7 +149,7 @@ def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]
             if not machines[i].push_string(beam):
                 raise Exception("Invalid code pushed to the next token machine: " + beam)
     elif isinstance(beams[0], list):
-        machine = env.NextTokenMachine(scenario.alg)
+        machine = env.NextTokenMachine(scenario.alg, allow_subst)
         
         machines = {i:machine.copy() for i,beam in enumerate(beams)}
 

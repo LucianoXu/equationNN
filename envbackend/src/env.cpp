@@ -202,7 +202,7 @@ namespace ualg {
             for (const auto& rule : *p_current_rule_pos_tree) {
                 valid_next_tokens.insert(rule.choice);
             }
-            if (subst_variables.size() > 0) {
+            if (allow_subst && subst_variables.size() > 0) {
                 valid_next_tokens.insert(tokenizer.get_encoding("SUBST"));
             }
             break;
@@ -303,7 +303,7 @@ namespace ualg {
         // cout << endl;
     }
 
-    NextTokenMachine::NextTokenMachine(const Algebra& _algebra) : algebra(_algebra), sig(_algebra.get_signature()), tokenizer(Tokenizer(_algebra)), kernel(SymbolKernel(_algebra)) {
+    NextTokenMachine::NextTokenMachine(const Algebra& _algebra, bool _allow_subst) : algebra(_algebra), sig(_algebra.get_signature()), tokenizer(Tokenizer(_algebra)), kernel(SymbolKernel(_algebra)), allow_subst(_allow_subst) {
 
         for (const auto& f : algebra.get_signature().get_func_symbols()) {
             func_symbols.insert(tokenizer.get_encoding(f.name));
@@ -361,6 +361,7 @@ namespace ualg {
     }
 
     bool NextTokenMachine::push_token(int token) {
+        // first check whether the token is valid
         if (valid_next_tokens.find(token) == valid_next_tokens.end()) {
             return false;
         }

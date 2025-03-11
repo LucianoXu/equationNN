@@ -201,6 +201,9 @@ namespace ualg {
         Tokenizer tokenizer;
         SymbolKernel kernel;
 
+        // whether the substitution is allowed
+        bool allow_subst;
+
         std::set<int> func_symbols;
         std::set<int> var_symbols;
 
@@ -243,7 +246,7 @@ namespace ualg {
          * 
          * @param algebra 
          */
-        NextTokenMachine(const Algebra& algebra);
+        NextTokenMachine(const Algebra& algebra, bool allow_subst = true);
 
         /**
          * @brief Construct a new Next Token Machine object by copying the other machine.

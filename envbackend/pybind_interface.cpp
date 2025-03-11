@@ -70,7 +70,8 @@ PYBIND11_MODULE(envbackend, m) {
         .def("decode", &Tokenizer::decode);
 
     py::class_<NextTokenMachine> next_tok_machine(m, "NextTokenMachine");
-    next_tok_machine.def(py::init<const Algebra&>())
+    next_tok_machine
+        .def(py::init<const Algebra&, bool>())
         .def(py::init<const NextTokenMachine&>())
         .def("copy", &NextTokenMachine::copy)
         .def_property_readonly("encodings", &NextTokenMachine::get_encodings)

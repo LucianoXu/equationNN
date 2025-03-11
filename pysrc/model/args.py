@@ -1,6 +1,6 @@
 from .model import ModelArgs
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Type
 
 @dataclass
 class SmallArgs(ModelArgs):
@@ -27,4 +27,9 @@ class MediumArgs(ModelArgs):
     d_ff: int = 128 * 3 * 4
     norm_eps: float = 1e-5
     rope_theta: float = 5000.0
+
+modelargs_dict : dict[str, Type[ModelArgs]] = {
+    'small': SmallArgs,
+    'medium': MediumArgs
+}
 

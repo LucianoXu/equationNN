@@ -9,7 +9,7 @@ def gen_examples(scenario: Scenario, count: int, max_step: int) -> list[ProofTra
     Generate a list of examples using a direct syntax fuzzer.
     '''
     traces : list[ProofTrace] = []
-    ntok_machine = env.NextTokenMachine(scenario.alg)
+    ntok_machine = env.NextTokenMachine(scenario.alg, True)
     # push in 'x = x :'
     random_var = list(scenario.alg.signature.variables)[0]
     init_eq = env.parse_equation(f"{random_var} = {random_var}")

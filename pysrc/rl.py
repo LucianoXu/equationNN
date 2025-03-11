@@ -153,7 +153,7 @@ def solve_group(model, scenario, problems: list[str], step_limit: int, state_len
 
         # generate the batched solution
         batch = [env.state for env in remaining_envs]
-        actions, log_probs = batch_generation(model, scenario, batch, context_length, T)
+        actions, log_probs = batch_generation(model, scenario, batch, False, context_length, T)
 
         reward_results : list[float] = []
         for i in range(len(remaining_envs)):
@@ -209,7 +209,7 @@ def gen_group(model,
 
         # generate the batch
         batch = [env.state for env in remaining_envs]
-        actions, log_probs = batch_generation(model, scenario, batch, context_length, T)
+        actions, log_probs = batch_generation(model, scenario, batch, True, context_length, T)
 
         reward_results : list[float] = []
         for i in range(len(remaining_envs)):

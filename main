@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
     from pysrc.tasks import task_ntok_machine
     task_ntok_machine.build_parser(subparsers)
-    # ./main ntok_machine algdesc/OMLext.alg
+    # ./main ntok_machine algdesc/OML.alg -m sol
 
     from pysrc.tasks import task_syn_gen_examples
     task_syn_gen_examples.build_parser(subparsers)
@@ -29,11 +29,11 @@ if __name__ == '__main__':
 
     from pysrc.tasks import task_sol_rl_fuzzer
     task_sol_rl_fuzzer.build_parser(subparsers)
-    # ./main sol_rl_fuzzer algdesc/OML.alg --ckpt ./ckpt/OMLSol -i --num_steps=512 --batch_size=8 --acc_steps=12 --gen_step_limit=4 --sol_step_limit=12 -t 0.7 --save_interval=10
+    # ./main sol_rl_fuzzer algdesc/OML.alg --ckpt ./ckpt/OMLSol -i --modelargs=medium --num_steps=512 --lr=3e-4 --batch_size=8 --acc_steps=12 --gen_step_limit=4 --sol_step_limit=12 -t 0.7 --save_interval=10
 
     from pysrc.tasks import task_gen_rl_vampire
     task_gen_rl_vampire.build_parser(subparsers)
-    # ./main gen_rl_vampire algdesc/OMLext.alg --ckpt ./ckpt/OMLextGen -i --num_steps=512 --batch_size=8 --acc_steps=12 --gen_step_limit=12 -t 0.7 --save_interval=10
+    # ./main gen_rl_vampire algdesc/OMLext.alg --ckpt ./ckpt/OMLextGen -i --modelargs=medium --num_steps=512 --lr=3e-4 --batch_size=8 --acc_steps=12 --gen_step_limit=12 -t 0.7 --save_interval=10
 
     from pysrc.tasks import task_adv_rl
     task_adv_rl.build_parser(subparsers)

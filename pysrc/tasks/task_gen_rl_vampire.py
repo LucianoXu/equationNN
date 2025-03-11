@@ -11,10 +11,13 @@ def build_parser(subparsers: argparse._SubParsersAction):
     parser.add_argument("alg_desc", type=str, help="Path to the algorithm description.")
     parser.add_argument("--ckpt", type=str, help="Path to the checkpoint folder.", default="./ckpt/temp")
     parser.add_argument("-i", "--init", action="store_true", help="Initialize training models.")
+    parser.add_argument("-v", "--version", type=str, help="Version of the model to load. Cannot be used together with -i.")
+    parser.add_argument("--device", type=str, default='cuda', help="Device to use (cuda/cpu).")
+    parser.add_argument("--modelargs", type=str, default='medium', help="Model arguments.")
     parser.add_argument("--vampire", type=str, default='vampire', help="Path to Vampire.")
     parser.add_argument("--timeout", type=float, default=5, help="Timeout for Vampire.")
-    parser.add_argument("--device", type=str, default='cuda', help="Device to use (cuda/cpu).")
     parser.add_argument("--num_steps", type=int, default=64, help="Number of steps.")
+    parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate.")
     parser.add_argument("--batch_size", type=int, default=6, help="Batch size.")
     parser.add_argument("--acc_steps", type=int, default=16, help="Accumulation step.")
     parser.add_argument("--gen_step_limit", type=int, default=5, help="Generation step limit.")
@@ -31,7 +34,8 @@ def task(parsed_args: argparse.Namespace):
 
     scenario = Scenario(alg_code)
 
-    args = MediumArgs(vocab_size=scenario.tokenizer.get_vocab_size(), context_length=150)
+    model_args = modelargs_dict[parsed_args.modelargs]
+    args = model_args(vocab_size=scenario.tokenizer.get_vocab_size(), context_length=150)
     device = parsed_args.device
 
     if parsed_args.init:
@@ -45,6 +49,12 @@ def task(parsed_args: argparse.Namespace):
         device = device
     )
 
+    if parsed_args.version:
+        version = parsed_args.version
+    else:
+        version = 'none' if parsed_args.init else 'latest'
+
+
     gen_rl_train_by_vampire(
         gen_model = gen_model,
         scenario = scenario,
@@ -52,9 +62,9 @@ def task(parsed_args: argparse.Namespace):
         context_length = args.context_length,
 
         ckpt_folder = parsed_args.ckpt,
-        input_version_name = 'none' if parsed_args.init else 'latest',
+        input_version_name = version,
 
-        lr = 3e-7,
+        lr = parsed_args.lr,
         weight_decay=0.01,
         betas=(0.9, 0.99),
         grad_norm_clip=1.0,
