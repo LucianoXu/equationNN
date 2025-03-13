@@ -10,6 +10,7 @@ from tqdm import tqdm
 from typing import Literal, Optional
 from elab import ELab, set_adamw_params, get_grad_norm
 from .utilis import get_command
+from contextlib import nullcontext
 
 
 class Trace:
@@ -30,8 +31,7 @@ def interestingness(equation: env.Equation, proof_step: int) -> float:
 
     (The interestingness function is for adversarial reinforcement learning training.)
     '''
-    size = equation.lhs.get_term_size() + equation.rhs.get_term_size() + 1
-    return 20 * proof_step / size
+    return 20 * proof_step / equation.size
 
 class GenEnv:
     '''
@@ -293,6 +293,7 @@ def init_sol_gen_models(
         device = device
     ).save("init")
 
+
 def adv_rl_train(
         gen_model: Llama3,
         sol_model: Llama3,
@@ -359,6 +360,8 @@ def adv_rl_train(
         )
         sol_model.train()
         gen_model.eval()
+        sol_ctx = nullcontext()
+        gen_ctx = torch.no_grad()
         t: int = max(sol_lab.data['t'], gen_lab.data['t'])
 
     else:
@@ -383,6 +386,8 @@ def adv_rl_train(
         )
         gen_model.train()
         sol_model.eval()
+        sol_ctx = torch.no_grad()
+        gen_ctx = nullcontext()
         t: int = max(sol_lab.data['t'], gen_lab.data['t'])
 
 
@@ -391,6 +396,8 @@ def adv_rl_train(
     def save_labs():
         sol_lab.data['t'] = t
         gen_lab.data['t'] = t
+
+        # save the model selectively, because the optimizer is not maintained in the untrained model
         if learn_model == 'sol':
             sol_lab.save(f"RL-{t}")
         else:
@@ -423,11 +430,13 @@ def adv_rl_train(
                 for _ in range(accumulation_step):
                     # STEP 1: sampling the episodes
                     # generate the problems
-                    gen_traces = gen_group(gen_model, scenario, batch_size, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
+                    with gen_ctx:
+                        gen_traces = gen_group(gen_model, scenario, batch_size, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
                     
                     # solve the problems
                     equations = [str(trace.final_eq) for trace in gen_traces]
-                    sol_traces = solve_group(sol_model, scenario, equations, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
+                    with sol_ctx:
+                        sol_traces = solve_group(sol_model, scenario, equations, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
 
                     ###########################
                     
@@ -533,18 +542,92 @@ def adv_rl_train(
                 optimizer.zero_grad()
 
 
-    except KeyboardInterrupt:
-        print("Interrupted by user.")
-
     except Exception as e:
-        print(f"An error of type {type(e)} occurred: {e}")
-
-    finally:
         if save_interval is not None:
             save_labs()
+            
+        if isinstance(e, KeyboardInterrupt):
+            print("Interrupted by user.")
+            
+        else:
+            print(f"An error of type {type(e)} occurred: {e}")
+
+        raise e
+
+    if save_interval is not None:
+        save_labs()
 
     print("Training completed and model saved.")
 
+
+def adv_rl_train_in_turns(
+        gen_model: Llama3,
+        sol_model: Llama3,
+        scenario: Scenario,
+        state_len_limit: int,
+        context_length: int,
+
+        ckpt_folder: str,
+        
+        # optimizer
+        lr: float,
+        weight_decay: float, 
+        betas: tuple[float, float], 
+        eps = 1e-8,
+        grad_norm_clip: Optional[float] = None,
+
+        # training settings
+        starting_model : Literal['gen', 'sol'] = 'sol',
+        num_steps_per_turn: int = 50, # number of steps per turn.
+        num_turns: int = 10, # number of turns
+        batch_size: int = 10, 
+        accumulation_step: int = 10,
+        save_interval: Optional[int] = 10,
+        logging: bool = True,
+
+        # reinforcement learning settings
+        rl_gen_step_limit: int = 20,
+        rl_sol_step_limit: int = 20,
+        rl_temperature: float = 0.6,):
+
+    '''
+    The adversarial reinforcement learning training in turns. A turn is a period of training for the generator or the solver.
+
+    It will always use the latest version of the models.
+    '''
+    train_mode = starting_model
+    
+    for i in range(num_turns):
+        print(f"Turn {i + 1}/{num_turns} ({train_mode})")
+        adv_rl_train(
+            gen_model = gen_model,
+            sol_model = sol_model,
+            scenario = scenario,
+            state_len_limit = state_len_limit,
+            context_length = context_length,
+            ckpt_folder = ckpt_folder,
+            input_version_name = 'latest',
+            lr = lr,
+            weight_decay = weight_decay,
+            betas = betas,
+            eps = eps,
+            grad_norm_clip = grad_norm_clip,
+            learn_model = train_mode,
+            num_steps = num_steps_per_turn,
+            batch_size = batch_size,
+            accumulation_step = accumulation_step,
+            save_interval = save_interval,
+            logging = logging,
+            rl_gen_step_limit = rl_gen_step_limit,
+            rl_sol_step_limit = rl_sol_step_limit,
+            rl_temperature = rl_temperature
+        )
+
+        train_mode = 'gen' if train_mode == 'sol' else 'sol'
+
+    print("Training completed.")
+
+    
 
 
 def sol_rl_train_by_fuzzer(
@@ -705,15 +788,20 @@ def sol_rl_train_by_fuzzer(
                 optimizer.zero_grad()
 
 
-    except KeyboardInterrupt:
-        print("Interrupted by user.")
-
     except Exception as e:
-        print(f"An error of type {type(e)} occurred: {e}")
-
-    finally:
         if save_interval is not None:
             save_labs()
+
+        if isinstance(e, KeyboardInterrupt):
+            print("Interrupted by user.")
+            
+        else:
+            print(f"An error of type {type(e)} occurred: {e}")
+
+        raise e
+
+    if save_interval is not None:
+        save_labs()
 
     print("Training completed and model saved.")
 
@@ -884,14 +972,18 @@ def gen_rl_train_by_vampire(
                 optimizer.zero_grad()
 
 
-    except KeyboardInterrupt:
-        print("Interrupted by user.")
-
     except Exception as e:
-        print(f"An error of type {type(e)} occurred: {e}")
-
-    finally:
         if save_interval is not None:
             save_labs()
+            
+        if isinstance(e, KeyboardInterrupt):
+            print("Interrupted by user.")
+            
+        else:
+            print(f"An error of type {type(e)} occurred: {e}")
 
+        raise e
+
+    if save_interval is not None:
+        save_labs()
     print("Training completed and model saved.")

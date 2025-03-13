@@ -11,6 +11,10 @@ if __name__ == '__main__':
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    from pysrc.tasks import task_instance_by_vampire
+    task_instance_by_vampire.build_parser(subparsers)
+    # ./main instance_by_vampire algdesc/OML.alg -t 10
+
     from pysrc.tasks import task_model_info
     task_model_info.build_parser(subparsers)
     # ./main model_info --modelargs=large
@@ -41,6 +45,7 @@ if __name__ == '__main__':
 
     from pysrc.tasks import task_adv_rl
     task_adv_rl.build_parser(subparsers)
+    # ./main adv_rl algdesc/OML.alg --ckpt ./ckpt/OMLAdv -i --modelargs=medium --starting_mode=sol --num_steps_per_turn=24 --num_turns=20 --lr=3e-4 --batch_size=6 --acc_steps=16 --gen_step_limit=8 --sol_step_limit=12 -t 0.7 --save_interval=10
     
     from pysrc.tasks import task_parse_examples
     task_parse_examples.build_parser(subparsers)
