@@ -11,6 +11,10 @@ if __name__ == '__main__':
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    from pysrc.tasks import task_model_info
+    task_model_info.build_parser(subparsers)
+    # ./main model_info --modelargs=large
+
     from pysrc.tasks import task_get_vocab
     task_get_vocab.build_parser(subparsers)
     # ./main get_vocab algdesc/OMLext.alg
@@ -46,13 +50,13 @@ if __name__ == '__main__':
     task_test_intere_example.build_parser(subparsers)
     # ./main test_intere_example algdesc/OMLext.alg algdesc/OMLext_examples.txt -o paper_eval.csv
 
-    from pysrc.tasks import task_test_intere_synfuzzer
-    task_test_intere_synfuzzer.build_parser(subparsers)
-    # ./main test_intere_synfuzzer algdesc/OML.alg -c 100 -m 10 -o synfuzzer_eval.csv
+    from pysrc.tasks import task_test_synfuzzer_examples
+    task_test_synfuzzer_examples.build_parser(subparsers)
+    # ./main test_synfuzzer_examples algdesc/OML.alg -c 100 -m 10 -o synfuzzer_eval.csv
 
-    from pysrc.tasks import task_test_intere_model
-    task_test_intere_model.build_parser(subparsers)
-    # ./main test_intere_model algdesc/OML.alg --ckpt ./ckpt/OMLGen --batch_size=6 -t 0.7 -c 100 -m 10 -o model_eval.csv
+    from pysrc.tasks import task_test_modelfuzzer_examples
+    task_test_modelfuzzer_examples.build_parser(subparsers)
+    # ./main test_modelfuzzer_examples algdesc/OML.alg --ckpt ./ckpt/OMLGen --batch_size=30 -t 0.7 -c 100 -m 10 -o model_eval.csv
 
     # Parse arguments
     args = parser.parse_args()

@@ -19,9 +19,6 @@ def task(parsed_args: argparse.Namespace):
 
     scenario = Scenario(alg_code)
 
-
-    scenario = Scenario(alg_code)
-
     args = MediumArgs(vocab_size=scenario.tokenizer.get_vocab_size(), context_length=150)
     device = parsed_args.device
     

@@ -28,8 +28,22 @@ class MediumArgs(ModelArgs):
     norm_eps: float = 1e-5
     rope_theta: float = 5000.0
 
+@dataclass
+class LargeArgs(ModelArgs):
+    '''
+    ~126M parameters
+    '''
+    dim: int = 128 * 4
+    n_layers: int = 32
+    n_heads: int = 32
+    n_kv_heads: int = 16
+    d_ff: int = 128 * 4 * 4
+    norm_eps: float = 1e-5
+    rope_theta: float = 5000.0
+
 modelargs_dict : dict[str, Type[ModelArgs]] = {
     'small': SmallArgs,
-    'medium': MediumArgs
+    'medium': MediumArgs,
+    'large': LargeArgs
 }
 

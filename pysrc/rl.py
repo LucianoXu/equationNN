@@ -9,6 +9,7 @@ from torch.optim.adamw import AdamW
 from tqdm import tqdm
 from typing import Literal, Optional
 from elab import ELab, set_adamw_params, get_grad_norm
+from .utilis import get_command
 
 
 class Trace:
@@ -220,7 +221,6 @@ def gen_group(model,
         reward_results : list[float] = []
         for i in range(len(remaining_envs)):
             # the generation may be unfinished and the C++ parser will report an warning. This is not a problem.
-            print(actions[i])
             reward_results.append(remaining_envs[i].step(actions[i], state_len_limit))
 
         for i, reward in enumerate(reward_results):
@@ -402,6 +402,7 @@ def adv_rl_train(
 
     # tensorboard logger
     writer = SummaryWriter(ckpt_folder)
+    writer.add_text("command", get_command())
 
     try:
         step = 0
@@ -609,6 +610,7 @@ def sol_rl_train_by_fuzzer(
 
     # tensorboard logger
     writer = SummaryWriter(ckpt_folder)
+    writer.add_text("command", get_command())
 
     try:
         step = 0
@@ -781,8 +783,10 @@ def gen_rl_train_by_vampire(
 
     # tensorboard logger
     writer = SummaryWriter(ckpt_folder)
+    writer.add_text("command", get_command())
 
     try:
+        # step number
         step = 0
         while step < num_steps:
 
