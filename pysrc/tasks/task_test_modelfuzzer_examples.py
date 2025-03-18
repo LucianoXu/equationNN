@@ -8,7 +8,6 @@ from ..model import Llama3, MediumArgs
 from ..rl import gen_group
 from elab import ELab
 from ..proof import ProofTrace
-from ..utilis import self_bleu_nltk_intlists
 
 def build_parser(subparsers: argparse._SubParsersAction):
     parser = subparsers.add_parser("test_modelfuzzer_examples", help="Test the interestingness of model generated examples.")
@@ -91,23 +90,15 @@ def task(parsed_args: argparse.Namespace):
         total_intere += intere
     print(f"Average interestingness: {total_intere / len(intere_result)}")
 
-    # calculate the BLEU score
-    print("Calculating BLEU score...")
-    encodings = [scenario.tokenizer.encode(str(trace.final_eq)) for trace in traces]
-    bleu_results = self_bleu_nltk_intlists(encodings)
-
-    # calculate the average BLEU score
-    print(f"Average BLEU score: {sum(bleu_results) / len(bleu_results)}")
-
     results = []
     for i in range(len(traces)):
-        results.append((str(examples[i]), intere_result[i][0], intere_result[i][1], intere_result[i][2], bleu_results[i]))
+        results.append((str(examples[i]), intere_result[i][0], intere_result[i][1], intere_result[i][2]))
 
 
     if parsed_args.output:
         with open(parsed_args.output, 'w') as f:
             writer = csv.writer(f)
-            writer.writerow(["Equation", "Size", "Complexity", "Interestingness", "BLEU"])
+            writer.writerow(["Equation", "Size", "Complexity", "Interestingness"])
             writer.writerows(results)
 
         print(f"Results saved to {parsed_args.output}.")

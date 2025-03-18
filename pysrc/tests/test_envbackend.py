@@ -59,7 +59,7 @@ def test_parse_alg():
     alg = env.parse_alg(algebra_code)
     assert alg is not None
 
-def test_tokenizer():
+def test_tokenizer1():
     alg = env.parse_alg(algebra_code)
     assert alg is not None
     tokenizer = env.Tokenizer(alg)
@@ -67,6 +67,37 @@ def test_tokenizer():
 
     encoding = tokenizer.encode("zero = x")
     assert tokenizer.decode(encoding) == "zero = x "
+
+def test_tokenizer2():
+    algebra_code = '''
+    [function]
+    & : 2
+    | : 2
+    ~ : 1
+    simp : 2
+    sconj : 2
+
+    [variable]
+    x y z u v w
+
+    [axiom]
+    (commM) &(x y) = &(y x)
+    (commJ) |(x y) = |(y x)
+    (assocM) &(x &(y z)) = &(&(x y) z)
+    (assocJ) |(x |(y z)) = |(|(x y) z)
+    (absorbM) &(x |(x y)) = x
+    (absorbJ) |(x &(x y)) = x
+    (negneg) ~(~(x)) = x
+    (deMorgenM) ~(&(x y)) = |(~(x) ~(y))
+    (deMorgenJ) ~(|(x y)) = &(~(x) ~(y))
+    (OML) |(x y) = |(&(|(x y) x) &(|(x y) ~(x)))
+    (SIMP) simp(x y) = |(~(x) &(x y))
+    (SCONJ) sconj(x y) = &(x |(~(x) y))'''
+
+    alg = env.parse_alg(algebra_code)
+    assert alg is not None
+    tokenizer = env.Tokenizer(alg)
+    assert tokenizer.vocab == ['<PAD>', '<SOS>', '<EOS>', '(', ')', ':', '{', '}', ',', '=', '&', '|', '~', 'simp', 'sconj', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', 'SUBST', 'commM', 'commJ', 'assocM_L2R', 'assocM_R2L', 'assocJ_L2R', 'assocJ_R2L', 'absorbM_L2R', 'absorbM_R2L', 'absorbJ_L2R', 'absorbJ_R2L', 'negneg_L2R', 'negneg_R2L', 'deMorgenM_L2R', 'deMorgenM_R2L', 'deMorgenJ_L2R', 'deMorgenJ_R2L', 'OML_L2R', 'OML_R2L', 'SIMP_L2R', 'SIMP_R2L', 'SCONJ_L2R', 'SCONJ_R2L']
 
 def test_next_token_machine():
     alg = env.parse_alg(algebra_code)

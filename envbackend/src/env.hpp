@@ -44,6 +44,12 @@ namespace ualg {
         SUCCESS
     };
 
+    /**
+     * @brief Check whether the equation is symmetric according to the signature.
+     */
+    bool check_symm_axiom(const Signature& sig, const equation& eq);
+
+
     class SymbolKernel {
     private:
         // The algebra
@@ -82,6 +88,11 @@ namespace ualg {
          */
         ACT_RESULT action(equation& eq, const proof_action& act) const;
 
+        /**
+         * @brief Perform the action on the equation (state) by the code. It will modify the equation according to the rule, and return the result.
+         * 
+         * @throw noexcept
+         */
         ACT_RESULT action_by_code(equation& eq, const std::string& action_code) const;
 
         /**

@@ -1,5 +1,6 @@
 
 #include "utils.hpp"
+#include <stdexcept>
 
 using namespace std;
 

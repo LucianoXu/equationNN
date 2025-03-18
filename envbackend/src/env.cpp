@@ -5,17 +5,28 @@ using namespace std;
 
 namespace ualg {
 
+    bool check_symm_axiom(const Signature& sig, const equation& eq) {
+        return match(eq.lhs, eq.rhs, sig, {}).has_value() && match(eq.rhs, eq.lhs, sig, {}).has_value();
+    }
+
     SymbolKernel::SymbolKernel(const Algebra& _algebra) : algebra(_algebra), sig(algebra.get_signature()) {
         for (const auto& [name, eq] : algebra.get_axioms()) {
-            // Forward Direction (L2R)
-            auto L2R_name = name + "_L2R";
-            rule_names.push_back(L2R_name);
-            rules[L2R_name] = RewriteRule(eq.lhs, eq.rhs, sig);
+            if (check_symm_axiom(sig, eq)) {
+                // Symmetric Axiom
+                rule_names.push_back(name);
+                rules[name] = RewriteRule(eq.lhs, eq.rhs, sig);
+            }
+            else {
+                // Forward Direction (L2R)
+                auto L2R_name = name + "_L2R";
+                rule_names.push_back(L2R_name);
+                rules[L2R_name] = RewriteRule(eq.lhs, eq.rhs, sig);
 
-            // Backward Direction (R2L)
-            auto R2L_name = name + "_R2L";
-            rule_names.push_back(R2L_name);
-            rules[R2L_name] = RewriteRule(eq.rhs, eq.lhs, sig);
+                // Backward Direction (R2L)
+                auto R2L_name = name + "_R2L";
+                rule_names.push_back(R2L_name);
+                rules[R2L_name] = RewriteRule(eq.rhs, eq.lhs, sig);
+            }
         }
     }
 

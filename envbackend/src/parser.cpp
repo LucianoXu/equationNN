@@ -1,6 +1,7 @@
 #include "parser.hpp"
 
 using namespace std;
+using namespace antlr4;
 
 namespace ualg {
 
@@ -216,7 +217,6 @@ namespace ualg {
     }
 
     vector<string> parse_tokens(const string& code) {
-        using namespace antlr4;
         
         ANTLRInputStream input(code);
         ENVBACKENDLexer lexer(&input);
@@ -232,199 +232,62 @@ namespace ualg {
         return token_list;
     }
 
-    optional<equation> parse_equation(const string& code) {
-        using namespace antlr4;
-        
+
+    template<typename T, typename ParserMethod, typename BuilderMethod>
+    optional<T> parse_generic(const string &code, ParserMethod parseFn, BuilderMethod getterFn) {
+    
         ANTLRInputStream input(code);
         ENVBACKENDLexer lexer(&input);
         CommonTokenStream tokens(&lexer);
-
         tokens.fill();
-        
+    
         ENVBACKENDParser parser(&tokens);
-        tree::ParseTree *tree = parser.equation();
-
+        tree::ParseTree* tree = (parser.*parseFn)();
+        
         // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
-            ENVBACKENDTermBuilder treeBuilder;
-            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
-
-            // Retrieve the root of the custom tree
-            return treeBuilder.get_equation();            
-        } else {
+        if (parser.getNumberOfSyntaxErrors() > 0 || tokens.LA(1) != Token::EOF) {
             return nullopt;
         }
+
+        ENVBACKENDTermBuilder treeBuilder;
+        antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
+
+        // Retrieve the result
+        return optional<T>((treeBuilder.*getterFn)());
+    }
+
+
+    optional<equation> parse_equation(const string& code) {
+        return parse_generic<equation>(code, &ENVBACKENDParser::equation, &ENVBACKENDTermBuilder::get_equation);
     }
 
     optional<TermPtr> parse_term(const string& code) {
-        using namespace antlr4;
-        
-        ANTLRInputStream input(code);
-        ENVBACKENDLexer lexer(&input);
-        CommonTokenStream tokens(&lexer);
-
-        tokens.fill();
-        
-        ENVBACKENDParser parser(&tokens);
-        tree::ParseTree *tree = parser.expr();
-
-        // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
-            ENVBACKENDTermBuilder treeBuilder;
-            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
-
-            // Retrieve the root of the custom tree
-            return treeBuilder.get_term();            
-        } else {
-            return nullopt;
-        }
+        return parse_generic<TermPtr>(code, &ENVBACKENDParser::expr, &ENVBACKENDTermBuilder::get_term);
     }
 
 
     optional<TermPos> parse_pos(const string& code) {
-        using namespace antlr4;
-    
-        ANTLRInputStream input(code);
-        ENVBACKENDLexer lexer(&input);
-        CommonTokenStream tokens(&lexer);
-    
-        tokens.fill();
-    
-        ENVBACKENDParser parser(&tokens);
-
-        tree::ParseTree *tree = parser.pos();
-    
-        // Ensure the entire input is consumed by checking EOF
-        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
-            // Create the tree builder
-            ENVBACKENDTermBuilder treeBuilder;
-            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
-
-            // Retrieve the root of the custom tree
-            return treeBuilder.get_pos();
-        } else {
-            return nullopt;
-        }
+        return parse_generic<TermPos>(code, &ENVBACKENDParser::pos, &ENVBACKENDTermBuilder::get_pos);
     }
 
     optional<subst> parse_subst(const string& code) {
-        using namespace antlr4;
-        
-        ANTLRInputStream input(code);
-        ENVBACKENDLexer lexer(&input);
-        CommonTokenStream tokens(&lexer);
-
-        tokens.fill();
-        
-        ENVBACKENDParser parser(&tokens);
-        tree::ParseTree *tree = parser.subst();
-
-        // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
-            ENVBACKENDTermBuilder treeBuilder;
-            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
-
-            // Retrieve the root of the custom tree
-            return treeBuilder.get_subst();            
-        } else {
-            return nullopt;
-        }
+        return parse_generic<subst>(code, &ENVBACKENDParser::subst, &ENVBACKENDTermBuilder::get_subst);
     }
 
     optional<Signature> parse_signature(const string& code) {
-        using namespace antlr4;
-        
-        ANTLRInputStream input(code);
-        ENVBACKENDLexer lexer(&input);
-        CommonTokenStream tokens(&lexer);
-
-        tokens.fill();
-        
-        ENVBACKENDParser parser(&tokens);
-        tree::ParseTree *tree = parser.sig();
-
-        // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
-            ENVBACKENDTermBuilder treeBuilder;
-            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
-
-            // Retrieve the root of the custom tree
-            return treeBuilder.get_signature();            
-        } else {
-            return nullopt;
-        }
+        return parse_generic<Signature>(code, &ENVBACKENDParser::sig, &ENVBACKENDTermBuilder::get_signature);
     }
 
     optional<Algebra> parse_alg(const string& code) {
-        using namespace antlr4;
-        
-        ANTLRInputStream input(code);
-        ENVBACKENDLexer lexer(&input);
-        CommonTokenStream tokens(&lexer);
-
-        tokens.fill();
-        
-        ENVBACKENDParser parser(&tokens);
-        tree::ParseTree *tree = parser.alg();
-
-        // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
-            ENVBACKENDTermBuilder treeBuilder;
-            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
-
-            // Retrieve the root of the custom tree
-            return treeBuilder.get_algebra();            
-        } else {
-            return nullopt;
-        }
+        return parse_generic<Algebra>(code, &ENVBACKENDParser::alg, &ENVBACKENDTermBuilder::get_algebra);
     }
 
     optional<proof_action> parse_proof_action(const string& code) {
-        using namespace antlr4;
-        
-        ANTLRInputStream input(code);
-        ENVBACKENDLexer lexer(&input);
-        CommonTokenStream tokens(&lexer);
-
-        tokens.fill();
-        
-        ENVBACKENDParser parser(&tokens);
-        tree::ParseTree *tree = parser.proofaction();
-
-        // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
-            ENVBACKENDTermBuilder treeBuilder;
-            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
-
-            // Retrieve the root of the custom tree
-            return treeBuilder.get_proof_action();            
-        } else {
-            return nullopt;
-        }
+        return parse_generic<proof_action>(code, &ENVBACKENDParser::proofaction, &ENVBACKENDTermBuilder::get_proof_action);
     }
 
 
     optional<proof_step> parse_proof_step(const string& code) {
-        using namespace antlr4;
-        
-        ANTLRInputStream input(code);
-        ENVBACKENDLexer lexer(&input);
-        CommonTokenStream tokens(&lexer);
-
-        tokens.fill();
-        
-        ENVBACKENDParser parser(&tokens);
-        tree::ParseTree *tree = parser.proofstep();
-
-        // Check for errors
-        if (parser.getNumberOfSyntaxErrors() == 0 && tokens.LA(1) == Token::EOF) {
-            ENVBACKENDTermBuilder treeBuilder;
-            antlr4::tree::ParseTreeWalker::DEFAULT.walk(&treeBuilder, tree);
-
-            // Retrieve the root of the custom tree
-            return treeBuilder.get_proof_step();            
-        } else {
-            return nullopt;
-        }
+        return parse_generic<proof_step>(code, &ENVBACKENDParser::proofstep, &ENVBACKENDTermBuilder::get_proof_step);
     }
 } // namespace ualg
