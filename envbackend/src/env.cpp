@@ -376,7 +376,8 @@ namespace ualg {
             algebra(other.algebra),
             sig(other.sig),
             tokenizer(other.tokenizer),
-            kernel(other.kernel) {
+            kernel(other.kernel),
+            allow_subst(other.allow_subst) {
         func_symbols = other.func_symbols;
         var_symbols = other.var_symbols;
         required_vars_map = other.required_vars_map;

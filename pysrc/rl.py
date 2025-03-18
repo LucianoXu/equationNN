@@ -166,7 +166,7 @@ def solve_group(model, scenario : Scenario, states: Sequence[str|env.proof_state
 
         # generate the batched solution
         batch = [env.state for env in remaining_envs]
-        actions, log_probs = batch_generation(model, scenario, batch, False, stop_token=scenario.END_ACT, context_length=context_length, T=T)
+        actions, log_probs = batch_generation(model, scenario, batch, allow_subst=False, stop_token=scenario.END_ACT, context_length=context_length, T=T)
 
         reward_results : list[float] = []
         for i in range(len(remaining_envs)):
@@ -221,7 +221,7 @@ def gen_group(model,
 
         # generate the batch
         batch = [env.state for env in remaining_envs]
-        actions, log_probs = batch_generation(model, scenario, batch, True, stop_token=scenario.END_ACT, context_length=context_length, T=T)
+        actions, log_probs = batch_generation(model, scenario, batch, allow_subst=True, stop_token=scenario.END_ACT, context_length=context_length, T=T)
 
         reward_results : list[float] = []
         for i in range(len(remaining_envs)):
@@ -413,7 +413,7 @@ def adv_rl_train(
 
     # tensorboard logger
     writer = SummaryWriter(ckpt_folder)
-    writer.add_text("command", get_command())
+    writer.add_text("command", get_command(), t)
 
     try:
         step = 0
@@ -428,6 +428,8 @@ def adv_rl_train(
             gen_avg_reward = 0.
             gen_total_pseudo_loss = 0.
 
+            total_solved = 0
+
             torch.cuda.empty_cache()
 
             try:
@@ -441,6 +443,9 @@ def adv_rl_train(
                     stts = [trace.final_stt for trace in gen_traces]
                     with sol_ctx:
                         sol_traces = solve_group(sol_model, scenario, stts, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
+
+                    # (calculate the solved rate)
+                    total_solved += sum(1 for trace in sol_traces if trace.final_stt.eq.lhs == trace.final_stt.eq.rhs)
 
                     ###########################
                     
@@ -524,6 +529,7 @@ def adv_rl_train(
 
                 # Logging
                 if logging:
+                    writer.add_scalar("solving rate", total_solved / (batch_size * accumulation_step), t)
                     writer.add_scalar("sol pseudo loss", sol_avg_pseudo_loss, t)
                     writer.add_scalar("sol avg reward", sol_avg_reward, t)
                     writer.add_scalar("gen pseudo loss", gen_avg_pseudo_loss, t)
@@ -697,7 +703,7 @@ def sol_rl_train_by_fuzzer(
 
     # tensorboard logger
     writer = SummaryWriter(ckpt_folder)
-    writer.add_text("command", get_command())
+    writer.add_text("command", get_command(), t)
 
     try:
         step = 0
@@ -708,6 +714,7 @@ def sol_rl_train_by_fuzzer(
             # note that reward is calculated for each trace
             sol_avg_reward = 0.
             sol_total_pseudo_loss = 0.
+            total_solved = 0
 
             torch.cuda.empty_cache()
 
@@ -720,6 +727,9 @@ def sol_rl_train_by_fuzzer(
                     
                     # solve the problems
                     sol_traces = solve_group(sol_model, scenario, stts, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
+
+                    # (calculate the solved rate)
+                    total_solved += sum(1 for trace in sol_traces if trace.final_stt.eq.lhs == trace.final_stt.eq.rhs)
 
                     ###########################
                     
@@ -775,6 +785,7 @@ def sol_rl_train_by_fuzzer(
 
                 # Logging
                 if logging:
+                    writer.add_scalar("solving rate", total_solved / (batch_size * accumulation_step), t)
                     writer.add_scalar("sol pseudo loss", sol_avg_pseudo_loss, t)
                     writer.add_scalar("sol avg reward", sol_avg_reward, t)
                     writer.add_scalar("sol raw grad norm", sol_raw_grad_norm, t)
@@ -874,7 +885,7 @@ def gen_rl_train_by_vampire(
 
     # tensorboard logger
     writer = SummaryWriter(ckpt_folder)
-    writer.add_text("command", get_command())
+    writer.add_text("command", get_command(), t)
 
     try:
         # step number
