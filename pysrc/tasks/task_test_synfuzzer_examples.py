@@ -9,6 +9,8 @@ def build_parser(subparsers: argparse._SubParsersAction):
     parser.add_argument("alg_desc", type=str, help="Path to the algorithm description.")
     parser.add_argument("-c", "--count", type=int, help="Number of examples to generate.", default=100)
     parser.add_argument("-m", "--max_step", type=int, help="Maximum step of the generation.", default=10)
+    parser.add_argument("--state_len_limit", type=int, help="State length limit.", default=100)
+    parser.add_argument("--context_length", type=int, help="Context length.", default=150)
     parser.add_argument("--timeout", type=float, default=5, help="Timeout for Vampire.")
     parser.add_argument("--vampire", type=str, help="Path to the vampire executable.", default="vampire")
     parser.add_argument("--print_trace", action="store_true", help="Print the generated traces.")
@@ -23,7 +25,7 @@ def task(parsed_args: argparse.Namespace):
 
     scenario = Scenario(alg_code)
 
-    traces = gen_examples(scenario, count=parsed_args.count, max_step=parsed_args.max_step)
+    traces = gen_examples(scenario, count=parsed_args.count, max_step=parsed_args.max_step, state_len=parsed_args.state_len_limit, context_len=parsed_args.context_length)
 
     # print the traces
     if parsed_args.print_trace:

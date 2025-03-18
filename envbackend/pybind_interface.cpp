@@ -76,7 +76,6 @@ PYBIND11_MODULE(envbackend, m) {
         .def("copy", &NextTokenMachine::copy)
         .def_property_readonly("encodings", &NextTokenMachine::get_encodings)
         .def_property_readonly("input", &NextTokenMachine::get_input)
-        .def_property_readonly("finished_session", &NextTokenMachine::get_finished_session)
         .def_property_readonly("valid_next_tokens", &NextTokenMachine::get_valid_next_tokens)
         .def("push_token", py::overload_cast<int>(&NextTokenMachine::push_token))
         .def("push_token", py::overload_cast<string>(&NextTokenMachine::push_token))
@@ -86,39 +85,54 @@ PYBIND11_MODULE(envbackend, m) {
         .def("__str__", &NextTokenMachine::to_string);
 
     py::enum_<NextTokenMachine::State>(next_tok_machine, "State")
+        .value("START_STT", NextTokenMachine::State::START_STT)
         .value("LHS", NextTokenMachine::State::LHS)
         .value("EQ", NextTokenMachine::State::EQ)
         .value("RHS", NextTokenMachine::State::RHS)
-        .value("COLON", NextTokenMachine::State::COLON)
+        .value("END_STT", NextTokenMachine::State::END_STT)
+        .value("START_ACT", NextTokenMachine::State::START_ACT)
         .value("ACT_NAME", NextTokenMachine::State::ACT_NAME)
         .value("POS", NextTokenMachine::State::POS)
         .value("SUBST", NextTokenMachine::State::SUBST)
         .value("SUBST_TERM", NextTokenMachine::State::SUBST_TERM)
         .value("SUBST_COLON", NextTokenMachine::State::SUBST_COLON)
         .value("COMMA", NextTokenMachine::State::COMMA)
-        .value("EOS", NextTokenMachine::State::EOS)
+        .value("SUBST_ACT_NAME", NextTokenMachine::State::SUBST_ACT_NAME)
+        .value("SUBST_ACT_TERM", NextTokenMachine::State::SUBST_ACT_TERM)
+        .value("END_ACT", NextTokenMachine::State::END_ACT)
         .value("HALT", NextTokenMachine::State::HALT)
         .export_values();
+
+    py::class_<proof_state>(m, "proof_state")
+        .def(py::init<equation>())
+        .def(py::init<const proof_state&>())
+        .def_readwrite("eq", &proof_state::eq)
+        .def("__eq__", &proof_state::operator==)
+        .def("__str__", &proof_state::to_string)
+        .def("__repr__", &proof_state::to_repr);
 
     py::class_<proof_action>(m, "proof_action")
         .def(py::init<const string&, const TermPos&, const subst&>())
         .def_readwrite("rule_name", &proof_action::rule_name)
         .def_readwrite("pos", &proof_action::pos)
         .def_readwrite("subst", &proof_action::spec_subst)
-        .def("__str__", &proof_action::to_string);
+        .def("__str__", &proof_action::to_string)
+        .def("__repr__", &proof_action::to_repr);
 
     py::class_<proof_step>(m, "proof_step")
-        .def(py::init<equation, proof_action>())
-        .def_readwrite("eq", &proof_step::eq)
+        .def(py::init<proof_state, proof_action>())
+        .def_readwrite("stt", &proof_step::stt)
         .def_readwrite("act", &proof_step::act)
-        .def("__str__", &proof_step::to_string);
+        .def("__str__", &proof_step::to_string)
+        .def("__repr__", &proof_step::to_repr);
 
     m.def("parse_term", &parse_term, "A function that parses the term code.");
     m.def("parse_equation", &parse_equation, "A function that parses the equation code.");
     m.def("parse_alg", &parse_alg, "A function that parses the algebra code.");
+    m.def("parse_proof_state", &parse_proof_state, "A function that parses the proof state code.");
     m.def("parse_proof_action", &parse_proof_action, "A function that parses the proof action code.");
     m.def("parse_proof_step", &parse_proof_step, "A function that parses the proof step code.");
-    m.def("check_action", &check_action, "A function that checks whether the action is valid.");
+    m.def("check_step", &check_step, "A function that checks whether the action is valid.");
 
     m.def("vampire_problem_encode", &vampire_problem_encode, "A function that generates the Vampire encode for the given problem.");
 }

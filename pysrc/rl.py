@@ -7,22 +7,26 @@ import torch
 from torch.utils.tensorboard.writer import SummaryWriter
 from torch.optim.adamw import AdamW
 from tqdm import tqdm
-from typing import Literal, Optional
+from typing import Literal, Optional, Sequence
 from elab import ELab, set_adamw_params, get_grad_norm
 from .utilis import get_command
 from contextlib import nullcontext
+import random
 
 
 class Trace:
-    def __init__(self, init_eq: env.Equation, steps: list[tuple[str, torch.Tensor, float]], final_eq: env.Equation):
-        self.init_eq = init_eq
-        self.final_eq = final_eq
+    '''
+    This is the trace during RL training, including the reward.
+    '''
+    def __init__(self, init_stt: env.proof_state, steps: list[tuple[str, torch.Tensor, float]], final_stt: env.proof_state):
+        self.init_stt = init_stt
+        self.final_stt = final_stt
         self.steps = steps
 
     def __str__(self):
-        res = "Initial equation: " + str(self.init_eq) + "\n" 
+        res = "Initial State: " + str(self.init_stt) + "\n" 
         res += "\n".join([str(step) for step in self.steps]) + "\n"
-        res += "Final equation: " + str(self.final_eq) + "\n"
+        res += "Final State: " + str(self.final_stt) + "\n"
         return res
 
 def interestingness(equation: env.Equation, proof_step: int) -> float:
@@ -41,18 +45,15 @@ class GenEnv:
     - A reward of the final interestingness is given in the end (in the rl training, instead of step function here)
     - If any step tries to exceed the state length limit, a penalty of -1 is given.
     '''
-    def __init__(self, scenario: Scenario, problem : env.Equation):
-        self.problem = problem
+    def __init__(self, scenario: Scenario, stt : env.proof_state):
+        self.stt = stt
         self.scenario = scenario
 
     @property
     def state(self) -> str:
-        return str(self.problem) + " : "
+        return str(self.stt)
     
     def step(self, action: str, state_len_limit: int) -> float:
-        '''
-        Notice that the state length limit include the '<SOS>' token and the ':' token.
-        '''
 
         temp_eq = env.Equation(self.problem)
 
@@ -62,7 +63,7 @@ class GenEnv:
             return -1.
 
         # check whether the state length limit is reached
-        state_len = len(self.scenario.tokenizer.encode(str(temp_eq))) + 2
+        state_len = len(self.scenario.tokenizer.encode(str(temp_eq)))
         if state_len > state_len_limit:
             return -1.
         
@@ -77,36 +78,33 @@ class SolveEnv:
 
     The reward is defined as the negative of the length of proof.
     '''
-    def __init__(self, scenario: Scenario, problem : env.Equation):
-        self.problem = problem
+    def __init__(self, scenario: Scenario, stt : env.proof_state):
+        self.stt = stt
         self.scenario = scenario
 
     @property
     def state(self) -> str:
-        return str(self.problem) + " : "
+        return str(self.stt)
     
     @property
     def stopped(self) -> bool:
-        return self.problem.lhs == self.problem.rhs
+        return self.stt.eq.lhs == self.stt.eq.rhs
     
     def step(self, action: str, state_len_limit: int) -> float:
-        '''
-        Notice that the state length limit include the '<SOS>' token and the ':' token.
-        '''
 
-        temp_eq = env.Equation(self.problem)
+        temp_stt = env.proof_state(self.stt)
 
-        res = self.scenario.kernel.action_by_code(temp_eq, action)
+        res = self.scenario.kernel.action_by_code(temp_stt, action)
 
         if res != env.ACT_RESULT.SUCCESS:
-            return 0.
+            return -0.2
 
-        # check whether the state length limit is reached （ +2 because of the <SOS> and <EOS> token)
-        state_len = len(self.scenario.tokenizer.encode(str(temp_eq))) + 2
+        # check whether the state length limit is reached
+        state_len = len(self.scenario.tokenizer.encode(str(temp_stt)))
         if state_len > state_len_limit:
             return 0.
         
-        self.problem = temp_eq
+        self.stt = temp_stt
 
         # check whether the problem is solved
         if self.stopped:
@@ -115,12 +113,20 @@ class SolveEnv:
         return 0.
 
 
-def solve_group(model, scenario, problems: list[str], step_limit: int, state_len_limit: int, context_length: int, T: float) -> list[Trace]:
+def solve_group(model, scenario : Scenario, states: Sequence[str|env.proof_state], step_limit: int, state_len_limit: int, context_length: int, T: float) -> list[Trace]:
     '''
     Solve a group of proof kernels for parallel training and evaluation.
     '''
-    parsed_problems : list[env.Equation] = [env.parse_equation(problem) for problem in problems]    # type: ignore
-    envs = [SolveEnv(scenario, problem) for problem in parsed_problems]
+    parsed_stts : list[env.proof_state] = []
+    for stt in states:
+        if isinstance(stt, str):
+            res = env.parse_proof_state(stt)
+            assert res is not None, f"Cannot parse the proof state: {stt}"
+            parsed_stts.append(res)
+        else:
+            parsed_stts.append(stt)
+
+    envs = [SolveEnv(scenario, stt) for stt in parsed_stts]
     # the mapping from the index in remained envs to the index in the original envs
     env_idx_mapping = [i for i in range(len(envs))]
     batch_size = len(envs)
@@ -160,11 +166,10 @@ def solve_group(model, scenario, problems: list[str], step_limit: int, state_len
 
         # generate the batched solution
         batch = [env.state for env in remaining_envs]
-        actions, log_probs = batch_generation(model, scenario, batch, False, context_length, T)
+        actions, log_probs = batch_generation(model, scenario, batch, False, stop_token=scenario.END_ACT, context_length=context_length, T=T)
 
         reward_results : list[float] = []
         for i in range(len(remaining_envs)):
-            # the generation may be unfinished and the C++ parser will report an warning. This is not a problem.
             reward_results.append(remaining_envs[i].step(actions[i], state_len_limit))
 
         for i, reward in enumerate(reward_results):
@@ -172,17 +177,17 @@ def solve_group(model, scenario, problems: list[str], step_limit: int, state_len
 
         progress_bar.update(1)
 
-    return [Trace(parsed_problems[i], traces[i], envs[i].problem) for i in range(batch_size)]
+    return [Trace(parsed_stts[i], traces[i], envs[i].stt) for i in range(batch_size)]
 
 
 
 def gen_group(model, 
-                      scenario: Scenario,
-                      batch_size: int = 10, 
-                      step_limit: int = 20, 
-                      state_len_limit: int = 128,
-                      context_length: int = 256, 
-                      T: float = 1.0) -> list[Trace]:
+        scenario: Scenario,
+        batch_size: int = 10, 
+        step_limit: int = 20, 
+        state_len_limit: int = 128,
+        context_length: int = 256, 
+        T: float = 1.0) -> list[Trace]:
     '''
     Generate a group of example traces.
 
@@ -197,9 +202,9 @@ def gen_group(model,
     '''
 
     # create initial equations and environments
-    x = list(scenario.sig.variables)[0]
-    init_eq = env.Equation(env.Term(x), env.Term(x))
-    envs = [GenEnv(scenario, env.Equation(init_eq)) for _ in range(batch_size)]
+    var_ls = random.choices(list(scenario.sig.variables), k=batch_size)
+    init_stts = [env.proof_state(env.Equation(env.Term(x), env.Term(x))) for x in var_ls]
+    envs = [GenEnv(scenario, stt) for stt in init_stts]
 
     # proceed the examples
     traces: list[list[tuple[str, torch.Tensor, float]]] = [[] for _ in range(batch_size)]
@@ -216,11 +221,10 @@ def gen_group(model,
 
         # generate the batch
         batch = [env.state for env in remaining_envs]
-        actions, log_probs = batch_generation(model, scenario, batch, True, context_length, T)
+        actions, log_probs = batch_generation(model, scenario, batch, True, stop_token=scenario.END_ACT, context_length=context_length, T=T)
 
         reward_results : list[float] = []
         for i in range(len(remaining_envs)):
-            # the generation may be unfinished and the C++ parser will report an warning. This is not a problem.
             reward_results.append(remaining_envs[i].step(actions[i], state_len_limit))
 
         for i, reward in enumerate(reward_results):
@@ -228,7 +232,7 @@ def gen_group(model,
 
         progress_bar.update(1)
 
-    return [Trace(init_eq, trace, env.problem) for env, trace in zip(envs, traces)]
+    return [Trace(init_stt, trace, env.stt) for init_stt, env, trace in zip(init_stts, envs, traces)]
 
 
 def construct_pseudo_loss(sol_traces: list[Trace], device: str|torch.device) -> tuple[float, torch.Tensor]:
@@ -434,9 +438,9 @@ def adv_rl_train(
                         gen_traces = gen_group(gen_model, scenario, batch_size, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
                     
                     # solve the problems
-                    equations = [str(trace.final_eq) for trace in gen_traces]
+                    stts = [trace.final_stt for trace in gen_traces]
                     with sol_ctx:
-                        sol_traces = solve_group(sol_model, scenario, equations, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
+                        sol_traces = solve_group(sol_model, scenario, stts, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
 
                     ###########################
                     
@@ -446,7 +450,7 @@ def adv_rl_train(
                     # add the final reward of interestingness according to the solution result
                     for i in range(len(gen_traces)):
                         original = gen_traces[i].steps[-1]
-                        gen_traces[i].steps[-1] = (original[0], original[1], original[2] + interestingness(gen_traces[i].final_eq, len(sol_traces[i].steps)))
+                        gen_traces[i].steps[-1] = (original[0], original[1], original[2] + interestingness(gen_traces[i].final_stt.eq, len(sol_traces[i].steps)))
 
                     gen_reward, gen_J = construct_pseudo_loss(gen_traces, device)
 
@@ -500,11 +504,11 @@ def adv_rl_train(
                 # test generation result
                 with torch.no_grad():
                     demo_traces = gen_group(gen_model, scenario, 10, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
-                    demo_eqs = [str(trace.final_eq) for trace in demo_traces]
-                    demo_sols = solve_group(sol_model, scenario, demo_eqs, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
+                    demo_stts = [trace.final_stt for trace in demo_traces]
+                    demo_sols = solve_group(sol_model, scenario, demo_stts, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
                     demo_record = ""
                     for i in range(len(demo_traces)):
-                        demo_record += f"{demo_eqs[i]}\nSOL-LENGTH {len(demo_sols[i].steps)}, INTERESTINGNESS {interestingness(demo_traces[i].final_eq, len(demo_sols[i].steps))}\n"
+                        demo_record += f"{demo_stts[i]}\nSOL-LENGTH {len(demo_sols[i].steps)}, INTERESTINGNESS {interestingness(demo_traces[i].final_stt.eq, len(demo_sols[i].steps))}\n"
 
                 # output
                 print(f"{ckpt_folder}\t({learn_model}) Step {t}")
@@ -542,7 +546,7 @@ def adv_rl_train(
                 optimizer.zero_grad()
 
 
-    except Exception as e:
+    except (KeyboardInterrupt, Exception) as e:
         if save_interval is not None:
             save_labs()
             
@@ -711,11 +715,11 @@ def sol_rl_train_by_fuzzer(
                 for _ in range(accumulation_step):
                     # STEP 1: sampling the episodes
                     # generate the problems
-                    traces = syntax_fuzzer.gen_examples(scenario, batch_size, fuzzer_step_limit)
-                    equations = [str(trace.final_eq) for trace in traces]
+                    traces = syntax_fuzzer.gen_examples(scenario, batch_size, fuzzer_step_limit, state_len_limit, context_length)
+                    stts = [trace.final_stt for trace in traces]
                     
                     # solve the problems
-                    sol_traces = solve_group(sol_model, scenario, equations, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
+                    sol_traces = solve_group(sol_model, scenario, stts, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
 
                     ###########################
                     
@@ -752,10 +756,10 @@ def sol_rl_train_by_fuzzer(
 
                 # test generation result
                 with torch.no_grad():
-                    demo_traces = syntax_fuzzer.gen_examples(scenario, 10, fuzzer_step_limit)
-                    demo_eqs = [str(trace.final_eq) for trace in demo_traces]
+                    demo_traces = syntax_fuzzer.gen_examples(scenario, 10, fuzzer_step_limit, state_len_limit, context_length)
+                    demo_stts = [trace.final_stt for trace in demo_traces]
 
-                    demo_sols = solve_group(sol_model, scenario, demo_eqs, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
+                    demo_sols = solve_group(sol_model, scenario, demo_stts, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
 
                     demo_record = ""
                     for trace in demo_sols:
@@ -787,8 +791,7 @@ def sol_rl_train_by_fuzzer(
                 print("!!! Out of memory error. Skipping this batch !!! ")
                 optimizer.zero_grad()
 
-
-    except Exception as e:
+    except (KeyboardInterrupt, Exception) as e:
         if save_interval is not None:
             save_labs()
 
@@ -893,8 +896,8 @@ def gen_rl_train_by_vampire(
                     gen_traces = gen_group(gen_model, scenario, batch_size, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
                     
                     # solve the problems
-                    equations = [trace.final_eq for trace in gen_traces]
-                    intere_vals = test_intere_mp(vampire, scenario, equations, timeout)
+                    eqs = [trace.final_stt.eq for trace in gen_traces]
+                    intere_vals = test_intere_mp(vampire, scenario, eqs, timeout)
 
                     ###########################
                     
@@ -939,7 +942,7 @@ def gen_rl_train_by_vampire(
                 # test generation result
                 with torch.no_grad():
                     demo_traces = gen_group(gen_model, scenario, 10, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)
-                    demo_eqs = [trace.final_eq for trace in demo_traces]
+                    demo_eqs = [trace.final_stt.eq for trace in demo_traces]
                     demo_intere_vals = test_intere_mp(vampire, scenario, demo_eqs, timeout)
                     demo_record = ""
                     for i in range(len(demo_traces)):
@@ -972,7 +975,7 @@ def gen_rl_train_by_vampire(
                 optimizer.zero_grad()
 
 
-    except Exception as e:
+    except (KeyboardInterrupt, Exception) as e:
         if save_interval is not None:
             save_labs()
             

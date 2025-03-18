@@ -13,10 +13,9 @@ def constrained_sample(
     - logits: (batch_size, vocab_size), the logit values for each token
     - valid_next_tokens: list of sets, where each set contains valid token indices for the corresponding batch item
     - T: the temperature coefficient to control randomness (default is 1.0)
-    - num_samples: the number of tokens to sample per batch item (default is 1)
 
     Returns:
-    - A list of lists, where each inner list contains the sampled tokens for the corresponding batch item.
+    - A tuple of prediced token ints and the corresponding probabilities. The probabilities are normalized within the valid tokens.
     '''
     # Scale the logits by the temperature
     logits = logits / T
@@ -64,7 +63,7 @@ def generate(model, scenario: Scenario, code: str, allow_subst: bool, max_len: i
     if not ntok_machine.push_string(code):
         raise Exception("Invalid code pushed to the next token machine: " + code)
 
-    encodings_tensor = torch.tensor([ntok_machine.encodings], device=device)
+    encodings_tensor = torch.tensor([ntok_machine.encodings], dtype=torch.int, device=device)
 
     output = []
     
@@ -91,10 +90,9 @@ def generate(model, scenario: Scenario, code: str, allow_subst: bool, max_len: i
                 raise Exception("Invalid token pushed to the next token machine.")
             output.append(next_token)
 
-            if output[-1] == scenario.EOS_ID:
-                # remove the <EOS> token
-                output = output[:-1]
+            if output[-1] == scenario.END_ACT:
                 break
+            
             encodings_tensor = torch.cat((encodings_tensor, torch.tensor([[output[-1]]], device = device)), dim=1)
 
     return scenario.tokenizer.decode(output)
@@ -119,7 +117,7 @@ def batch_predict(model, scenario: Scenario, machines: list[env.NextTokenMachine
     pad_seq_lens = [max(0, max_len - len(beam)) for beam in beams]
 
     # padding at the beginning of the beams
-    padded_beams = [[scenario.PAD_ID] * pad_seq_lens[i] + beams[i][-context_length:] for i in range(batch_size)]
+    padded_beams = [[scenario.PAD] * pad_seq_lens[i] + beams[i][-context_length:] for i in range(batch_size)]
 
     encoding = torch.tensor(padded_beams, device=device)
 
@@ -131,11 +129,13 @@ def batch_predict(model, scenario: Scenario, machines: list[env.NextTokenMachine
 
 
 
-def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]|list[env.NextTokenMachine],  allow_subst: bool, context_length: int = 256, T: float = 1.0) -> tuple[list[str], torch.Tensor]:
+def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]|list[env.NextTokenMachine],  allow_subst: bool, stop_token: Optional[int], context_length: int = 256, T: float = 1.0) -> tuple[list[str], torch.Tensor]:
     '''
     Generate the output for each beam using the model, with temperature scaling.
 
-    Return the output results (without "<EOS>") and the log probabilities of the output results.
+    Return the output results and the log probabilities of the output results.
+
+    The generation will be terminated if the stop token is generated (and included in the output), or it reaches the context length.
     '''
 
     # prepare the next token machines
@@ -148,6 +148,7 @@ def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]
             assert isinstance(beam, str)
             if not machines[i].push_string(beam):
                 raise Exception("Invalid code pushed to the next token machine: " + beam)
+            
     elif isinstance(beams[0], list):
         machine = env.NextTokenMachine(scenario.alg, allow_subst)
         
@@ -158,7 +159,7 @@ def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]
             if not machines[i].push_encodings(beam):
                 raise Exception("Invalid code pushed to the next token machine: " + str(beam))
     else:
-        machines = {i:beam for i,beam in enumerate(beams)}  # type: ignore
+        machines = {i:beam for i, beam in enumerate(beams)} # type: ignore
         machines : dict[int, env.NextTokenMachine]
     
     input_lens = {i:len(machines[i].encodings) for i in machines}
@@ -179,7 +180,7 @@ def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]
             # get the real index in the batch
             idx = indices[i]
 
-            # check if the beam is too long
+            # truncate the beam at the context length
             if len(machines[idx].encodings) >= context_length:
                 outputs[idx] = scenario.tokenizer.decode(machines[idx].encodings[input_lens[idx]:])
                 del machines[idx]
@@ -188,15 +189,13 @@ def batch_generation(model, scenario: Scenario, beams: list[str]|list[list[int]]
                 # update the log probabilities
                 acc_log_probs[idx] += log_probabilities[i]
 
-                # finish the beams that predict <EOS>
-                if next_tokens[i] == scenario.EOS_ID:
+                # push the next token to the next token machine
+                if not machines[idx].push_token(next_tokens[i]):
+                    raise Exception(f"Invalid token {next_tokens[i]} pushed to the next token machine. Machine state:\n{machines[idx].state}")
+
+                # finish the beams at the stop token
+                if next_tokens[i] == stop_token:
                     outputs[idx] = scenario.tokenizer.decode(machines[idx].encodings[input_lens[idx]:])
                     del machines[idx]
-
-
-                # update the beams that are not finished
-                else:
-                    if not machines[idx].push_token(next_tokens[i]):
-                        raise Exception(f"Invalid token {next_tokens[i]} pushed to the next token machine. Machine state:\n{machines[idx].state}")
 
     return outputs, acc_log_probs

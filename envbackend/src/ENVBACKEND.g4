@@ -4,11 +4,14 @@ grammar ENVBACKEND;
 
 ////////////////////////////////////////////////
 // RL langauge
-proofstep : equation ':' proofaction;
+proofstep : proofstate proofaction;
+
+// The state grammar
+proofstate : START_STATE equation END_STATE;
 
 // The action grammar
-proofaction : NAME pos subst    # RuleAction
-            | 'SUBST' NAME expr # SubstAction
+proofaction : START_ACTION NAME pos subst END_ACTION    # RuleAction
+            | START_ACTION 'SUBST' NAME expr END_ACTION # SubstAction
             ;
 
 ////////////////////////////////////////////////
@@ -44,7 +47,12 @@ pos : '(' INT* ')' ;
 //////////////////////////////////////////////
 
 // Lexer rules
-SPEC_SYMBOL : '<'[A-Za-z0-9_]*'>' | '</'[A-Za-z0-9_]*'>';
+
+START_STATE : '<STT>';
+END_STATE : '</STT>';
+START_ACTION : '<ACT>';
+END_ACTION : '</ACT>';
+
 INT :  '0' | [1-9][0-9]* ;
 NAME :  [A-Za-z_][A-Za-z0-9_]* ;
 SYMBOL :  '+' | '-' | '*' | '&' | '|' | '~' ;

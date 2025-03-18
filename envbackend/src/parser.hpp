@@ -70,6 +70,16 @@ namespace ualg {
      */
     std::optional<Algebra> parse_alg(const std::string& code);
 
+
+    /**
+     * @brief Parse the given code.
+     * 
+     * @param code 
+     * @return std::optional<proof_state> 
+     */
+    std::optional<proof_state> parse_proof_state(const std::string& code);
+
+
     /**
      * @brief Parse the given code.
      * 

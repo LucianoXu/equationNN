@@ -19,6 +19,9 @@ class Scenario:
         self.kernel = env.SymbolKernel(self.alg)
         self.tokenizer = env.Tokenizer(self.alg)
 
-        self.SOS_ID = self.tokenizer.get_encoding("<SOS>")
-        self.EOS_ID = self.tokenizer.get_encoding("<EOS>")
-        self.PAD_ID = self.tokenizer.get_encoding("<PAD>")
+        self.PAD = self.tokenizer.get_encoding("<PAD>")
+
+        self.START_STT = self.tokenizer.get_encoding("<STT>")
+        self.END_STT = self.tokenizer.get_encoding("</STT>")
+        self.START_ACT = self.tokenizer.get_encoding("<ACT>")
+        self.END_ACT = self.tokenizer.get_encoding("</ACT>")

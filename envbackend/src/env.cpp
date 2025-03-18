@@ -30,7 +30,7 @@ namespace ualg {
         }
     }
 
-    ACT_RESULT SymbolKernel::action(equation& eq, const proof_action& act) const {
+    ACT_RESULT SymbolKernel::action(proof_state& stt, const proof_action& act) const {
         auto [rule_name, pos, spec_subst] = act;
 
         // if it is a substitution
@@ -38,8 +38,8 @@ namespace ualg {
             if (pos.size() != 0) {
                 return FAILURE;
             }
-            eq.lhs = apply_subst(eq.lhs, spec_subst);
-            eq.rhs = apply_subst(eq.rhs, spec_subst);
+            stt.eq.lhs = apply_subst(stt.eq.lhs, spec_subst);
+            stt.eq.rhs = apply_subst(stt.eq.rhs, spec_subst);
             return SUCCESS;
         }
 
@@ -49,7 +49,7 @@ namespace ualg {
         }
 
         try {
-            auto side = pos[0] == 0 ? eq.lhs : eq.rhs;
+            auto side = pos[0] == 0 ? stt.eq.lhs : stt.eq.rhs;
 
             // check whether the rule name is valid
             auto find_res = rules.find(rule_name);
@@ -61,10 +61,10 @@ namespace ualg {
 
             if (res.has_value()) {
                 if (pos[0] == 0) {
-                    eq.lhs = res.value();
+                    stt.eq.lhs = res.value();
                 }
                 else {
-                    eq.rhs = res.value();
+                    stt.eq.rhs = res.value();
                 }
                 return SUCCESS;
             }
@@ -77,19 +77,28 @@ namespace ualg {
         }
     }
 
-    ACT_RESULT SymbolKernel::action_by_code(equation& eq, const string& action_code) const {
+    ACT_RESULT SymbolKernel::action_by_code(proof_state& stt, const string& action_code) const {
         auto act = parse_proof_action(action_code);
         if (!act.has_value()) {
-            return FAILURE;
+            // check whether the action code is finished
+            auto tokens = parse_tokens(action_code);
+
+            // if the action code is empty, generation is not finished
+            // if the last token is "</ACT>", the generation is finished. In this case, the behavior is unexpected.
+            if (tokens.size() > 0 && tokens.back() == "</ACT>") {
+                // If the invalid action is a finished action, raise an exception
+                throw std::runtime_error("Invalid Finished Action: " + action_code);
+            }
+            return INVALID;
         }
-        return action(eq, act.value());
+        return action(stt, act.value());
     }
 
-    std::vector<std::pair<std::string, TermPos>> SymbolKernel::get_valid_rule_pos(const equation& eq) const {
+    std::vector<std::pair<std::string, TermPos>> SymbolKernel::get_valid_rule_pos(const proof_state& stt) const {
         vector<pair<string, TermPos>> res;
         // Get all the subterms
-        auto lhs_subterms = eq.lhs->get_all_subterms();
-        auto rhs_subterms = eq.rhs->get_all_subterms();
+        auto lhs_subterms = stt.eq.lhs->get_all_subterms();
+        auto rhs_subterms = stt.eq.rhs->get_all_subterms();
         
         // iterate throw all the rules in the kernel
         for (const auto& [rule_name, rule] : rules) {
@@ -115,7 +124,7 @@ namespace ualg {
 
     Tokenizer::Tokenizer(const Algebra& _algebra) : algebra(_algebra), sig(_algebra.get_signature()) {
         // The basic symbols
-        vocab = {"<PAD>", "<SOS>", "<EOS>", "(", ")", ":", "{", "}", ",", "="};
+        vocab = {"<PAD>", "<STT>", "</STT>", "<ACT>", "</ACT>", "(", ")", ":", "{", "}", ",", "="};
 
         // The function symbols
         int max_arity = 2;  // starting with 2, for the choice in equation A = B
@@ -172,17 +181,23 @@ namespace ualg {
     }
 
     /**
-     * @brief Check wether the code is valid. No <SOS> or <EOS> is needed here.
+     * @brief Check wether the code is valid.
      */
-    bool check_action(const SymbolKernel& kernel, std::string code) {
-        proof_step step = parse_proof_step(code).value();
-        auto res = kernel.action(step.eq, step.act);
+    bool check_step(const SymbolKernel& kernel, std::string code) {
+        optional<proof_step> step = parse_proof_step(code);
+        if (!step.has_value()) {
+            return false;
+        }
+        auto res = kernel.action(step->stt, step->act);
         return res == SUCCESS;
     }
 
     void NextTokenMachine::calculate_valid_next_tokens() {
         valid_next_tokens.clear();
         switch (state) {
+        case START_STT:
+            valid_next_tokens = {tokenizer.get_encoding("<STT>")};
+            break;
         case LHS:
         case RHS:
         case SUBST_TERM:
@@ -204,9 +219,16 @@ namespace ualg {
             valid_next_tokens = {tokenizer.get_encoding("=")};
             break;
 
-        case COLON:
+        case END_STT:
+            valid_next_tokens = {tokenizer.get_encoding("</STT>")};
+            break;
+
         case SUBST_COLON:
             valid_next_tokens = {tokenizer.get_encoding(":")};
+            break;
+
+        case START_ACT:
+            valid_next_tokens = {tokenizer.get_encoding("<ACT>")};
             break;
 
         case ACT_NAME:
@@ -258,8 +280,8 @@ namespace ualg {
             valid_next_tokens = subst_variables;
             break;
 
-        case EOS:
-            valid_next_tokens = {tokenizer.get_encoding("<EOS>")};
+        case END_ACT:
+            valid_next_tokens = {tokenizer.get_encoding("</ACT>")};
             break;
 
         case HALT:
@@ -343,8 +365,8 @@ namespace ualg {
         }
 
 
-        encodings.push_back(tokenizer.get_encoding("<SOS>"));
-        state = LHS;
+        encodings = {};
+        state = START_STT;
         parenthesis = NONE;
 
         calculate_valid_next_tokens();
@@ -380,11 +402,13 @@ namespace ualg {
         encodings.push_back(token);
 
         std::vector<CandidateTree> temp;
-        string eq_code = "";
-        equation eq;
+        proof_state stt;
         set<string> lhs_vars, rhs_vars;
 
         switch (state) {
+        case START_STT:
+            state = LHS;
+            break;
         case LHS:
         case RHS:
         case SUBST_TERM:
@@ -420,7 +444,7 @@ namespace ualg {
                     state = EQ;
                 }
                 else if (state == RHS) {
-                    state = COLON;
+                    state = END_STT;
                 }
                 else if (state == SUBST_TERM) {
                     if (remaining_vars.empty()) {
@@ -432,7 +456,7 @@ namespace ualg {
                     }
                 }
                 else if (state == SUBST_ACT_TERM) {
-                    state = EOS;
+                    state = END_ACT;
                 }
                 else {
                     throw std::runtime_error("Invalid state.");
@@ -445,32 +469,33 @@ namespace ualg {
             state = RHS;
             break;
 
-        case COLON:
-            state = ACT_NAME;
+        case END_STT:
+            state = START_ACT;
 
             // get the equation
-            for (int i = 1; i < encodings.size()-1; ++i) {
-                eq_code += tokenizer.get_token(encodings[i]) + " ";
-            }
-            eq = parse_equation(eq_code).value();
+            stt = parse_proof_state(tokenizer.decode(encodings)).value();
 
             // get the valid rule names
             parse_valid_rule_pos_tree(
-                kernel.get_valid_rule_pos(eq)
+                kernel.get_valid_rule_pos(stt)
             );
 
             p_current_rule_pos_tree = &valid_rule_pos_tree;
 
             // calculate the possible variables to be substituted
             subst_variables.clear();
-            lhs_vars = eq.lhs->get_variables(sig);
-            rhs_vars = eq.rhs->get_variables(sig);
+            lhs_vars = stt.eq.lhs->get_variables(sig);
+            rhs_vars = stt.eq.rhs->get_variables(sig);
             for (const auto& var : lhs_vars) {
                 subst_variables.insert(tokenizer.get_encoding(var));
             }
             for (const auto& var : rhs_vars) {
                 subst_variables.insert(tokenizer.get_encoding(var));
             }
+            break;
+
+        case START_ACT:
+            state = ACT_NAME;
             break;
 
         case ACT_NAME:
@@ -520,7 +545,7 @@ namespace ualg {
             }
 
             else if (parenthesis == CLOSING) {
-                state = EOS;
+                state = END_ACT;
             }
 
             else {
@@ -542,7 +567,7 @@ namespace ualg {
             state = SUBST_ACT_TERM;
             break;
 
-        case EOS:
+        case END_ACT:
             state = HALT;
             break;
 

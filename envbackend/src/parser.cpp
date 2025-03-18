@@ -21,11 +21,16 @@ namespace ualg {
 
         Algebra get_algebra();
 
-        proof_step get_proof_step();
+        proof_state get_proof_state();
 
         proof_action get_proof_action();
 
+        proof_step get_proof_step();
+
+
         void exitProofstep(ENVBACKENDParser::ProofstepContext *ctx) override;
+
+        void exitProofstate(ENVBACKENDParser::ProofstateContext *ctx) override;
 
         void exitRuleAction(ENVBACKENDParser::RuleActionContext *ctx) override;
 
@@ -72,6 +77,7 @@ namespace ualg {
         vector<pair<string, equation>> axioms;
         Signature sig;
         Algebra algebra;
+        proof_state state;
         proof_action act;
         proof_step step;
     };
@@ -105,12 +111,26 @@ namespace ualg {
         return algebra;
     }
 
+    proof_state ENVBACKENDTermBuilder::get_proof_state() {
+        return state;
+    }
+
     proof_action ENVBACKENDTermBuilder::get_proof_action() {
         return act;
     }
 
     proof_step ENVBACKENDTermBuilder::get_proof_step() {
         return step;
+    }
+
+
+    void ENVBACKENDTermBuilder::exitProofstep(ENVBACKENDParser::ProofstepContext *ctx) {
+        step = {state, act};
+    }
+
+    void ENVBACKENDTermBuilder::exitProofstate(ENVBACKENDParser::ProofstateContext *ctx) {
+        state = {eq_stack.top()};
+        eq_stack.pop();
     }
 
     void ENVBACKENDTermBuilder::exitRuleAction(ENVBACKENDParser::RuleActionContext *ctx) {
@@ -122,11 +142,6 @@ namespace ualg {
     void ENVBACKENDTermBuilder::exitSubstAction(ENVBACKENDParser::SubstActionContext *ctx) {
         act = {"SUBST", TermPos(), subst{{ctx->NAME()->getText(), term_stack.top()}}};
         term_stack.pop();
-    }
-
-    void ENVBACKENDTermBuilder::exitProofstep(ENVBACKENDParser::ProofstepContext *ctx) {
-        step = {eq_stack.top(), act};
-        eq_stack.pop();
     }
 
     void ENVBACKENDTermBuilder::exitAlg(ENVBACKENDParser::AlgContext *ctx) {
@@ -241,7 +256,10 @@ namespace ualg {
         CommonTokenStream tokens(&lexer);
         tokens.fill();
     
+        // Initialize the parser and remove its error listeners.
         ENVBACKENDParser parser(&tokens);
+        parser.removeErrorListeners();
+
         tree::ParseTree* tree = (parser.*parseFn)();
         
         // Check for errors
@@ -282,10 +300,13 @@ namespace ualg {
         return parse_generic<Algebra>(code, &ENVBACKENDParser::alg, &ENVBACKENDTermBuilder::get_algebra);
     }
 
+    optional<proof_state> parse_proof_state(const string& code) {
+        return parse_generic<proof_state>(code, &ENVBACKENDParser::proofstate, &ENVBACKENDTermBuilder::get_proof_state);
+    }
+
     optional<proof_action> parse_proof_action(const string& code) {
         return parse_generic<proof_action>(code, &ENVBACKENDParser::proofaction, &ENVBACKENDTermBuilder::get_proof_action);
     }
-
 
     optional<proof_step> parse_proof_step(const string& code) {
         return parse_generic<proof_step>(code, &ENVBACKENDParser::proofstep, &ENVBACKENDTermBuilder::get_proof_step);

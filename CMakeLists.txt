@@ -47,7 +47,7 @@ message(STATUS "ANTLR4 executable: ${ANTLR4}")
 FetchContent_Declare(
   pybind11
   GIT_REPOSITORY https://github.com/pybind/pybind11.git
-  GIT_TAG master
+  GIT_TAG v2.13.6
 )
 # Make pybind11 available
 FetchContent_MakeAvailable(pybind11)

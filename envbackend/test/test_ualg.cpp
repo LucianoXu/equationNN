@@ -29,9 +29,19 @@ TEST(TestAlg, parsing_subst1) {
     EXPECT_TRUE(subst_eq(actual_res, expected_res));
 }
 
+TEST(TestAlg, parsing_proof_state) {
+    auto actual_res = ualg::parse_proof_state("<STT> u = & ( w z ) </STT>");
+    EXPECT_TRUE(actual_res.has_value());
+}
+
 TEST(TestAlg, parsing_proof_action) {
-    auto actual_res = ualg::parse_proof_action("SUBST x ~ ( w )").value();
+    auto actual_res = ualg::parse_proof_action("<ACT> SUBST x ~ ( w ) </ACT>").value();
     EXPECT_EQ(to_string(actual_res.spec_subst), "{x: ~(w)}");
+}
+
+TEST(TestAlg, parsing_proof_step) {
+    auto actual_res = ualg::parse_proof_step("<STT> u = & ( w z ) </STT> <ACT> SUBST w | ( | ( z ~ ( zero ) ) y ) </ACT>");
+    EXPECT_TRUE(actual_res.has_value());
 }
 
 TEST(TestAlg, parsing_sig) {
@@ -300,12 +310,12 @@ TEST(TestAlg, proof_action1) {
     auto lhs = parse_term("|(y &(u v))").value();
     auto rhs = parse_term("|(&(v u) u)").value();
 
-    equation eq = {lhs, rhs};
-    proof_action act = parse_proof_action("AX1_L2R (0 1) {z: u}").value();
+    proof_state stt = {{lhs, rhs}};
+    proof_action act = parse_proof_action("<ACT> AX1_L2R (0 1) {z: u} </ACT>").value();
 
-    auto res = kernel.action(eq, act);
+    auto res = kernel.action(stt, act);
     EXPECT_EQ(res, SUCCESS);
-    EXPECT_EQ(*eq.lhs, *parse_term("|(y |(&(v u) u))").value());
+    EXPECT_EQ(*stt.eq.lhs, *parse_term("|(y |(&(v u) u))").value());
 }
 
 TEST(TestAlg, next_token_machine1) {
@@ -327,7 +337,7 @@ TEST(TestAlg, next_token_machine1) {
 
     auto machine = NextTokenMachine(alg);
 
-    vector<string> seq = {"&", "(", "x", "y", ")", "=", "&", "(", "&", "(", "u", "u", ")", "y", ")", ":", "AX2_L2R", "(", "1", ")", "{", "w", ":", "|", "(", "zero", "zero", ")", ",", "z", ":", "&", "(", "u", "v", ")", "}", "<EOS>"};
+    vector<string> seq = {"<STT>", "&", "(", "x", "y", ")", "=", "&", "(", "&", "(", "u", "u", ")", "y", ")", "</STT>", "<ACT>", "AX2_L2R", "(", "1", ")", "{", "w", ":", "|", "(", "zero", "zero", ")", ",", "z", ":", "&", "(", "u", "v", ")", "}", "</ACT>"};
     
     while (machine.get_state() != NextTokenMachine::HALT) {
         cout << machine.to_string() << endl;
@@ -372,7 +382,7 @@ TEST(TestAlg, next_token_machine2) {
 
     auto machine = NextTokenMachine(alg);
 
-    vector<string> seq = {"&", "(", "x", "y", ")", "=", "&", "(", "&", "(", "u", "u", ")", "y", ")", ":", "SUBST", "y", "|", "(", "zero", "zero", ")", "<EOS>"};
+    vector<string> seq = {"<STT>", "&", "(", "x", "y", ")", "=", "&", "(", "&", "(", "u", "u", ")", "y", ")", "</STT>", "<ACT>", "SUBST", "y", "|", "(", "zero", "zero", ")", "</ACT>"};
     
     while (machine.get_state() != NextTokenMachine::HALT) {
         cout << machine.to_string() << endl;
@@ -415,9 +425,9 @@ TEST(TestAlg, apply_action) {
 
     SymbolKernel kernel(alg);
 
-    auto eq = parse_equation("&(x y) = &(&(u u) y)").value();
-    kernel.action_by_code(eq, "AX2_L2R (1) {w: |(zero zero), z: &(u v)}");
-    EXPECT_EQ(eq, parse_equation("&(x y) = |(&(u v) |(zero zero))").value());
+    auto stt = parse_proof_state("<STT> &(x y) = &(&(u u) y) </STT>").value();
+    kernel.action_by_code(stt, "<ACT> AX2_L2R (1) {w: |(zero zero), z: &(u v)} </ACT>");
+    EXPECT_EQ(stt, parse_proof_state("<STT> &(x y) = |(&(u v) |(zero zero)) </STT>").value());
 }
 
 TEST(TestAlg, apply_action_subst1) {
@@ -438,9 +448,9 @@ TEST(TestAlg, apply_action_subst1) {
 
     SymbolKernel kernel(alg);
 
-    auto eq = parse_equation("&(x y) = &(&(u u) y)").value();
-    kernel.action_by_code(eq, "SUBST y &(x x)");
-    EXPECT_EQ(eq, parse_equation("&(x &(x x)) = &(&(u u) &(x x))").value());
+    auto stt = parse_proof_state("<STT> &(x y) = &(&(u u) y) </STT>").value();
+    kernel.action_by_code(stt, "<ACT> SUBST y &(x x) </ACT>");
+    EXPECT_EQ(stt, parse_proof_state("<STT> &(x &(x x)) = &(&(u u) &(x x)) </STT>").value());
 }
 
 
@@ -469,7 +479,7 @@ TEST(TestAlg, apply_action_subst2) {
 
     SymbolKernel kernel(alg);
 
-    auto eq = parse_equation("|(&(|(y &(y x)) y) &(~(y) |(y &(y x)))) = y").value();
-    kernel.action_by_code(eq, "SUBST y ~( x )");
-    EXPECT_EQ(eq, parse_equation("|(&(|(~( x ) &(~( x ) x)) ~( x )) &(~(~( x )) |(~( x ) &(~( x ) x)))) = ~( x )").value());
+    auto stt = parse_proof_state("<STT> |(&(|(y &(y x)) y) &(~(y) |(y &(y x)))) = y </STT>").value();
+    kernel.action_by_code(stt, "<ACT> SUBST y ~( x ) </ACT>");
+    EXPECT_EQ(stt, parse_proof_state("<STT> |(&(|(~( x ) &(~( x ) x)) ~( x )) &(~(~( x )) |(~( x ) &(~( x ) x)))) = ~( x ) </STT>").value());
 }

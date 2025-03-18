@@ -9,37 +9,70 @@
 
 namespace ualg {
 
+    struct proof_state {
+        equation eq;
+
+        proof_state() {}
+
+        proof_state(const equation& _eq) : eq(_eq) {}
+
+        proof_state(const proof_state& other) : eq(other.eq) {}
+        
+        std::string to_string() const {
+            return "<STT>" + eq.to_string() + "</STT>";
+        }
+
+        std::string to_repr() const {
+            return "<STT " + to_string() + ">";
+        }
+
+        bool operator==(const proof_state& other) const {
+            return eq == other.eq;
+        }
+    };
+
     struct proof_action {
         std::string rule_name;
         TermPos pos;
         subst spec_subst;
 
         std::string to_string() const {
+            std::string content;
             if (rule_name == "SUBST") {
-                return "SUBST " + spec_subst.begin()->first + " " + spec_subst.begin()->second->to_string();
+                content = "SUBST " + spec_subst.begin()->first + " " + spec_subst.begin()->second->to_string();
             }
             else {
-                std::string res = rule_name + " (";
+                content = rule_name + " (";
                 for (const auto& p : pos) {
-                    res += std::to_string(p) + " ";
+                    content += std::to_string(p) + " ";
                 }
-                res += ") ";
-                res += ualg::to_string(spec_subst);
-                return res;
+                content += ") ";
+                content += ualg::to_string(spec_subst);
+                return content;
             }
+            return "<ACT>" + content + "</ACT>";
+        }
+
+        std::string to_repr() const {
+            return "<ACT " + to_string() + ">";
         }
     };
 
     struct proof_step {
-        equation eq;
+        proof_state stt;
         proof_action act;
 
         std::string to_string() const {
-            return eq.to_string() + " : " + act.to_string();
+            return stt.to_string() + act.to_string();
+        }
+
+        std::string to_repr() const {
+            return "<STEP " + to_string() + ">";
         }
     };
 
     enum ACT_RESULT {
+        INVALID,    // incorrect format
         FAILURE,
         SUCCESS
     };
@@ -80,20 +113,20 @@ namespace ualg {
         /**
          * @brief Perform the action on the equation (state). It will modify the equation according to the rule, and return the result.
          * 
-         * @param eq 
+         * @param stt 
          * @param rule_name 
          * @param pos 
          * @param spec_subst 
          * @return ACT_RESULT 
          */
-        ACT_RESULT action(equation& eq, const proof_action& act) const;
+        ACT_RESULT action(proof_state& stt, const proof_action& act) const;
 
         /**
          * @brief Perform the action on the equation (state) by the code. It will modify the equation according to the rule, and return the result.
          * 
          * @throw noexcept
          */
-        ACT_RESULT action_by_code(equation& eq, const std::string& action_code) const;
+        ACT_RESULT action_by_code(proof_state& stt, const std::string& action_code) const;
 
         /**
          * @brief Get the valid rule pos objects
@@ -101,7 +134,7 @@ namespace ualg {
          * @param eq 
          * @return std::vector<std::pair<std::string, TermPos>> 
          */
-        std::vector<std::pair<std::string, TermPos>> get_valid_rule_pos(const equation& eq) const;
+        std::vector<std::pair<std::string, TermPos>> get_valid_rule_pos(const proof_state& stt) const;
     };
 
 
@@ -161,12 +194,12 @@ namespace ualg {
     };
 
     /**
-     * @brief The function that checks whether the action is valid.
+     * @brief The function that checks whether the step is valid.
      * 
      * @param kernel
      * @param code
      */
-    bool check_action(const SymbolKernel& kernel, std::string code);
+    bool check_step(const SymbolKernel& kernel, std::string code);
 
     /**
      * @brief The machine that predicts the next possible token in the algebraic manipulation.
@@ -176,11 +209,13 @@ namespace ualg {
     class NextTokenMachine {
     public:
         enum State {
+            START_STT,
             LHS,
             EQ,
             RHS,
-            COLON,
+            END_STT,
 
+            START_ACT,
             ACT_NAME,
             // The rule branch
             POS,
@@ -192,7 +227,7 @@ namespace ualg {
             SUBST_ACT_NAME,
             SUBST_ACT_TERM,
 
-            EOS,
+            END_ACT,
             HALT
         };
         enum Parenthesis {
@@ -275,17 +310,6 @@ namespace ualg {
         }
 
         std::string get_input() const {
-            return tokenizer.decode(encodings);
-        }
-
-        std::string get_finished_session() const {
-            if (state != HALT) {
-                throw std::runtime_error("The session is not finished:\n" + to_string());
-            }
-            // create a new list without the frist <SOS> token and the last <EOS> token
-            std::vector<int> encodings = this->encodings;
-            encodings.erase(encodings.begin());
-            encodings.pop_back();
             return tokenizer.decode(encodings);
         }
 

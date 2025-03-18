@@ -7,6 +7,10 @@ def build_parser(subparsers: argparse._SubParsersAction):
     parser.add_argument("alg_desc", type=str, help="Path to the algorithm description.")
     parser.add_argument("-c", "--count", type=int, default=100, help="Number of examples to generate.")
     parser.add_argument("-m", "--max_step", type=int, default=10, help="Maximum step of the generation.")
+    parser.add_argument("--state_len_limit", type=int, default=100, help="State length limit.")
+    parser.add_argument("--context_length", type=int, default=150, help="Context length.")
+    parser.set_defaults(func=task)
+
     parser.set_defaults(func=task)
 
 def task(parsed_args: argparse.Namespace):
@@ -17,7 +21,7 @@ def task(parsed_args: argparse.Namespace):
 
     scenario = Scenario(alg_code)
 
-    traces = gen_examples(scenario, parsed_args.count, parsed_args.max_step)
+    traces = gen_examples(scenario, parsed_args.count, parsed_args.max_step, parsed_args.state_len_limit, parsed_args.context_length)
     for trace in traces:
         print(trace)
         print("\n\n")
