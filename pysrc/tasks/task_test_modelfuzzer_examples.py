@@ -76,7 +76,7 @@ def task(parsed_args: argparse.Namespace):
             print(traces[i])
             print("\n\n")
     
-    examples = [trace.final_eq for trace in traces]
+    examples = [trace.final_stt.eq for trace in traces]
     
     print(f"Generated {len(examples)} examples.")
 

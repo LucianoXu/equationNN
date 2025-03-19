@@ -30,6 +30,19 @@ class SmallArgs(ModelArgs):
     rope_theta: float = 5000.0
 
 @dataclass
+class SmallLArgs(ModelArgs):
+    '''
+    ~10M parameters
+    '''
+    dim: int = 192
+    n_layers: int = 18
+    n_heads: int = 16
+    n_kv_heads: int = 8
+    d_ff: int = 192 * 4
+    norm_eps: float = 1e-5
+    rope_theta: float = 5000.0
+
+@dataclass
 class MediumArgs(ModelArgs):
     '''
     ~35M parameters
@@ -85,6 +98,7 @@ modelargs_dict : dict[str, Type[ModelArgs]] = {
     'tiny': TinyArgs,
 
     'small': SmallArgs,
+    'smallL': SmallLArgs,
     
     'medium': MediumArgs,
     'mediumL' : MediumLArgs,

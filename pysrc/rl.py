@@ -13,19 +13,42 @@ from .utilis import get_command
 from contextlib import nullcontext
 import random
 
+class RLStep:
+    '''
+    The step in the reinforcement learning training, including the log probability and reward. Also the action is in string and not guaranteed to be valid.
+    '''
+    def __init__(self, stt: env.proof_state, act: str, log_prob: torch.Tensor, reward: float):
+        self.stt = stt
+        self.act = act
+        self.log_prob = log_prob
+        self.reward = reward
 
-class Trace:
+    def __str__(self):
+        return f"{self.stt} {self.act}\nLog Prob: {self.log_prob} Reward: {self.reward}\n"
+
+class RLTrace:
     '''
     This is the trace during RL training, including the reward.
     '''
-    def __init__(self, init_stt: env.proof_state, steps: list[tuple[str, torch.Tensor, float]], final_stt: env.proof_state):
-        self.init_stt = init_stt
-        self.final_stt = final_stt
+    def __init__(self, steps: list[RLStep], final_stt: env.proof_state):
         self.steps = steps
+        self.final_stt = final_stt
+
+    def __len__(self):
+        return len(self.steps)
+    
+    def __getitem__(self, idx: int) -> RLStep:
+        return self.steps[idx]
+    
+    @property
+    def init_stt(self) -> env.proof_state:
+        if len(self.steps) == 0:
+            return self.final_stt
+        else:
+            return self.steps[0].stt
 
     def __str__(self):
-        res = "Initial State: " + str(self.init_stt) + "\n" 
-        res += "\n".join([str(step) for step in self.steps]) + "\n"
+        res = "\n".join([str(step) for step in self.steps]) + "\n"
         res += "Final State: " + str(self.final_stt) + "\n"
         return res
 
@@ -48,6 +71,7 @@ class GenEnv:
     def __init__(self, scenario: Scenario, stt : env.proof_state):
         self.stt = stt
         self.scenario = scenario
+        self.trace_history : list[tuple[env.proof_state, str]] = []
 
     @property
     def state(self) -> str:
@@ -55,19 +79,22 @@ class GenEnv:
     
     def step(self, action: str, state_len_limit: int) -> float:
 
-        temp_eq = env.Equation(self.problem)
+        # record the state and action. Here we can use self.stt because it won't be changed.
+        self.trace_history.append((self.stt, action))
 
-        res = self.scenario.kernel.action_by_code(temp_eq, action)
+        temp_stt = env.proof_state(self.stt)
+
+        res = self.scenario.kernel.action_by_code(temp_stt, action)
 
         if res != env.ACT_RESULT.SUCCESS:
             return -1.
 
         # check whether the state length limit is reached
-        state_len = len(self.scenario.tokenizer.encode(str(temp_eq)))
+        state_len = len(self.scenario.tokenizer.encode(str(temp_stt)))
         if state_len > state_len_limit:
             return -1.
         
-        self.problem = temp_eq
+        self.stt = temp_stt
 
         return 0.
 
@@ -81,6 +108,7 @@ class SolveEnv:
     def __init__(self, scenario: Scenario, stt : env.proof_state):
         self.stt = stt
         self.scenario = scenario
+        self.trace_history : list[tuple[env.proof_state, str]] = []
 
     @property
     def state(self) -> str:
@@ -91,6 +119,9 @@ class SolveEnv:
         return self.stt.eq.lhs == self.stt.eq.rhs
     
     def step(self, action: str, state_len_limit: int) -> float:
+
+        # record the state and action. Here we can use self.stt because it won't be changed.
+        self.trace_history.append((self.stt, action))
 
         temp_stt = env.proof_state(self.stt)
 
@@ -113,7 +144,7 @@ class SolveEnv:
         return 0.
 
 
-def solve_group(model, scenario : Scenario, states: Sequence[str|env.proof_state], step_limit: int, state_len_limit: int, context_length: int, T: float) -> list[Trace]:
+def solve_group(model, scenario : Scenario, states: Sequence[str|env.proof_state], step_limit: int, state_len_limit: int, context_length: int, T: float) -> list[RLTrace]:
     '''
     Solve a group of proof kernels for parallel training and evaluation.
     '''
@@ -131,8 +162,8 @@ def solve_group(model, scenario : Scenario, states: Sequence[str|env.proof_state
     env_idx_mapping = [i for i in range(len(envs))]
     batch_size = len(envs)
 
-    # proceed the examples
-    traces: list[list[tuple[str, torch.Tensor, float]]] = [[] for _ in range(batch_size)]
+    # process the examples
+    rl_traces: list[list[RLStep]] = [[] for _ in range(batch_size)]
 
     progress_bar = tqdm(total=step_limit)
 
@@ -168,16 +199,19 @@ def solve_group(model, scenario : Scenario, states: Sequence[str|env.proof_state
         batch = [env.state for env in remaining_envs]
         actions, log_probs = batch_generation(model, scenario, batch, allow_subst=False, stop_token=scenario.END_ACT, context_length=context_length, T=T)
 
-        reward_results : list[float] = []
         for i in range(len(remaining_envs)):
-            reward_results.append(remaining_envs[i].step(actions[i], state_len_limit))
-
-        for i, reward in enumerate(reward_results):
-            traces[env_idx_mapping[i]].append((actions[i], log_probs[i], reward))
+            reward = remaining_envs[i].step(actions[i], state_len_limit)
+            rl_traces[env_idx_mapping[i]].append(
+                RLStep(stt = remaining_envs[i].stt, 
+                       act = actions[i], 
+                       log_prob = log_probs[i], 
+                       reward = reward
+                )
+            )
 
         progress_bar.update(1)
 
-    return [Trace(parsed_stts[i], traces[i], envs[i].stt) for i in range(batch_size)]
+    return [RLTrace(rl_traces[i], envs[i].stt) for i in range(batch_size)]
 
 
 
@@ -187,7 +221,7 @@ def gen_group(model,
         step_limit: int = 20, 
         state_len_limit: int = 128,
         context_length: int = 256, 
-        T: float = 1.0) -> list[Trace]:
+        T: float = 1.0) -> list[RLTrace]:
     '''
     Generate a group of example traces.
 
@@ -206,8 +240,8 @@ def gen_group(model,
     init_stts = [env.proof_state(env.Equation(env.Term(x), env.Term(x))) for x in var_ls]
     envs = [GenEnv(scenario, stt) for stt in init_stts]
 
-    # proceed the examples
-    traces: list[list[tuple[str, torch.Tensor, float]]] = [[] for _ in range(batch_size)]
+    # process the examples
+    rl_traces: list[list[RLStep]] = [[] for _ in range(batch_size)]
 
     progress_bar = tqdm(total=step_limit)
 
@@ -223,44 +257,51 @@ def gen_group(model,
         batch = [env.state for env in remaining_envs]
         actions, log_probs = batch_generation(model, scenario, batch, allow_subst=True, stop_token=scenario.END_ACT, context_length=context_length, T=T)
 
-        reward_results : list[float] = []
         for i in range(len(remaining_envs)):
-            reward_results.append(remaining_envs[i].step(actions[i], state_len_limit))
-
-        for i, reward in enumerate(reward_results):
-            traces[i].append((actions[i], log_probs[i], reward))
+            reward = remaining_envs[i].step(actions[i], state_len_limit)
+            rl_traces[i].append(
+                RLStep(stt = remaining_envs[i].stt,
+                        act = actions[i],
+                        log_prob = log_probs[i],
+                        reward = reward
+                )
+            )
 
         progress_bar.update(1)
 
-    return [Trace(init_stt, trace, env.stt) for init_stt, env, trace in zip(init_stts, envs, traces)]
+    return [RLTrace(rl_traces[i], envs[i].stt) for i in range(batch_size)]
 
 
-def construct_pseudo_loss(sol_traces: list[Trace], device: str|torch.device) -> tuple[float, torch.Tensor]:
+def construct_pseudo_loss(sol_traces: list[RLTrace], device: str|torch.device) -> tuple[float, torch.Tensor]:
     '''
     Construct and return the reward and pseudo loss for this batch.
+
+    Args:
+        sol_traces: a list of RLTrace objects for the batch.
+
+    Returns:
+        A tuple of the average reward and the pseudo loss.
     '''
 
     # calculate the baseline
     batch_reward = 0.
     for trace in sol_traces:
-        for i in range(len(trace.steps)):
-            batch_reward += trace.steps[i][2]
+        for step in trace.steps:
+            batch_reward += step.reward
 
     avg_trace_reward = batch_reward / len(sol_traces) # average reward per trace
 
     J = torch.tensor(0.0, device=device)
 
     for trace in sol_traces:
-        steps = trace.steps
-        for i in range(len(steps)):
-            _, log_prob, reward_to_go = steps[i]
+        for i in range(len(trace)):
+            reward_to_go = trace[i].reward
 
             # calculate the reward to go
-            for j in range(i+1, len(steps)):
-                _, _, r = steps[j]
-                reward_to_go += r
+            for j in range(i+1, len(trace)):
+                reward_to_go += trace[i].reward
 
-            J += log_prob * (reward_to_go - avg_trace_reward)
+            J += trace[i].log_prob * (reward_to_go - avg_trace_reward)
 
     return avg_trace_reward, J / len(sol_traces)
 
@@ -454,8 +495,7 @@ def adv_rl_train(
                     # (GEN)
                     # add the final reward of interestingness according to the solution result
                     for i in range(len(gen_traces)):
-                        original = gen_traces[i].steps[-1]
-                        gen_traces[i].steps[-1] = (original[0], original[1], original[2] + interestingness(gen_traces[i].final_stt.eq, len(sol_traces[i].steps)))
+                        gen_traces[i].steps[-1].reward += interestingness(gen_traces[i].final_stt.eq, len(sol_traces[i]))
 
                     gen_reward, gen_J = construct_pseudo_loss(gen_traces, device)
 
@@ -917,8 +957,7 @@ def gen_rl_train_by_vampire(
                     # (GEN)
                     # add the final reward of interestingness according to the solution result
                     for i in range(len(gen_traces)):
-                        original = gen_traces[i].steps[-1]
-                        gen_traces[i].steps[-1] = (original[0], original[1], original[2] + intere_vals[i])
+                        gen_traces[i].steps[-1].reward += intere_vals[i]
 
                     gen_reward, gen_J = construct_pseudo_loss(gen_traces, device)
 

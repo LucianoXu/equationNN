@@ -19,7 +19,7 @@ namespace ualg {
         proof_state(const proof_state& other) : eq(other.eq) {}
         
         std::string to_string() const {
-            return "<STT>" + eq.to_string() + "</STT>";
+            return "<STT> " + eq.to_string() + " </STT>";
         }
 
         std::string to_repr() const {
@@ -48,9 +48,8 @@ namespace ualg {
                 }
                 content += ") ";
                 content += ualg::to_string(spec_subst);
-                return content;
             }
-            return "<ACT>" + content + "</ACT>";
+            return "<ACT> " + content + " </ACT>";
         }
 
         std::string to_repr() const {

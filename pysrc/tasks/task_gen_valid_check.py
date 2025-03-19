@@ -26,7 +26,7 @@ def task(parsed_args: argparse.Namespace):
     while True:
         traces = gen_examples(scenario, parsed_args.count, parsed_args.max_step, parsed_args.state_len_limit, parsed_args.context_length)
         for trace in traces:
-            for step in trace.trace:
+            for step in trace.steps:
                 print(step)
                 if not env.check_step(scenario.kernel, str(step)):
                     raise Exception("Invalid action")

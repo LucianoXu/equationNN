@@ -3,15 +3,25 @@ from __future__ import annotations
 from .env import env, Scenario
 
 class ProofTrace:
-    def __init__(self, scenario: Scenario, trace: list[env.proof_step], final_stt: env.proof_state):
+    def __init__(self, scenario: Scenario, steps: list[env.proof_step], final_stt: env.proof_state):
         self.scenario = scenario
-        self.trace = trace
+        self.steps = steps
         self.final_stt = final_stt
 
+    def __len__(self):
+        return len(self.steps)
+
     def __str__(self):
-        res = "\n".join([str(step) for step in self.trace]) + "\n"
-        res += "Final equation: " + str(self.final_stt) + "\n"
+        res = "\n".join([str(step) for step in self.steps]) + "\n"
+        res += "Final State: " + str(self.final_stt) + "\n"
         return res
+    
+    @property
+    def init_stt(self) -> env.proof_state:
+        if len(self.steps) == 0:
+            return self.final_stt
+        else:
+            return self.steps[0].stt
     
     @staticmethod
     def from_acts(scenario: Scenario, init_stt: env.proof_state, acts: list[str]) -> ProofTrace:
