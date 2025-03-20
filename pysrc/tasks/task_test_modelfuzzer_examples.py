@@ -86,19 +86,19 @@ def task(parsed_args: argparse.Namespace):
 
     # calculate the average interestingness
     total_intere = 0.
-    for _, _, intere in intere_result:
+    for _, _, intere, _ in intere_result:
         total_intere += intere
     print(f"Average interestingness: {total_intere / len(intere_result)}")
 
     results = []
     for i in range(len(traces)):
-        results.append((str(examples[i]), intere_result[i][0], intere_result[i][1], intere_result[i][2]))
+        results.append((str(examples[i]), intere_result[i][0], intere_result[i][1], intere_result[i][2], intere_result[i][3]))
 
 
     if parsed_args.output:
         with open(parsed_args.output, 'w') as f:
             writer = csv.writer(f)
-            writer.writerow(["Equation", "Size", "Complexity", "Interestingness"])
+            writer.writerow(["Equation", "Size", "Complexity", "Interestingness", "Time"])
             writer.writerows(results)
 
         print(f"Results saved to {parsed_args.output}.")

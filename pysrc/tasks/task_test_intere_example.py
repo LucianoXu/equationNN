@@ -27,7 +27,7 @@ def task(parsed_args: argparse.Namespace):
 
     with open(parsed_args.output, 'w') as f:
         writer = csv.writer(f)
-        writer.writerow(["Size", "Complexity", "Interestingness"])
+        writer.writerow(["Equation", "Size", "Complexity", "Interestingness", "Time"])
         writer.writerows(result)
 
     print(f"Results saved to {parsed_args.output}.")

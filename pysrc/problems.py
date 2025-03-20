@@ -5,6 +5,7 @@ from .env import env, Scenario
 from abc import ABC, abstractmethod
 import multiprocessing as mp
 from tqdm import tqdm
+from .ext_solver import vampire_solve
 
 class ProofTrace:
     def __init__(self, scenario: Scenario, steps: list[env.proof_step], final_stt: env.proof_state):
@@ -150,7 +151,7 @@ class UniqueExamplePipe(GenProblemFactory):
 
         with tqdm(range(count), desc="UniqueExamplePipe", leave=False) as progress:
             while len(unique_problems) < count:
-                problem_set = self.factory.spawn(count // 2 + 1)
+                problem_set = self.factory.spawn(count)
                 for trace in problem_set.traces:
                     if trace.final_stt.eq not in unique_problems:
                         unique_problems.append(trace.final_stt.eq)
@@ -195,6 +196,39 @@ class LengthRequestPipe(GenProblemFactory):
         res = str(self.factory)
         res += f"\n=[Length Request Pipe(Min Len={self.min_len})]=>"
         return res
+    
+class VampireFailurePipe(GenProblemFactory):
+    '''
+    A pipe that generates problem sets which Vampire fails to solve.
+    '''
+    def __init__(self, factory: GenProblemFactory, vampire: str, timeout: float):
+        super().__init__(factory.scenario)
+        self.factory = factory
+        self.vampire = vampire
+        self.timeout = timeout
+
+    def spawn(self, count: int) -> GenProblemSet:
+        
+        traces : list[ProofTrace] = []
+
+        with tqdm(range(count), desc="VampireFailurePipe", leave=False) as progress:
+            while len(traces) < count:
+                problem_set = self.factory.spawn(count)
+                for trace in problem_set.traces:
+                    vampire_result = vampire_solve(self.vampire, self.scenario, trace.final_stt.eq, timeout=self.timeout)
+                    if vampire_result.is_true is None:
+                        traces.append(trace)
+                        progress.update(1)
+                        if len(traces) >= count:
+                            break
+
+        return GenProblemSet(self.scenario, traces)
+    
+    def __str__(self):
+        res = str(self.factory)
+        res += f"\n=[VampireFailurePipe(vampire={self.vampire}, timeout={self.timeout})]=>"
+        return res
+    
 
 
 class MultiProcessPipe(GenProblemFactory):

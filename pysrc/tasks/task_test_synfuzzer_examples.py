@@ -32,7 +32,9 @@ def task(parsed_args: argparse.Namespace):
         max_step=parsed_args.max_step,
         state_len=parsed_args.state_len_limit,
         context_len=parsed_args.context_length,
-        nproc=parsed_args.nproc
+        nproc=parsed_args.nproc,
+        vampire=parsed_args.vampire,
+        timeout=parsed_args.timeout
     )
 
     print("Example Factory: \n\n", example_factory, "\n\n")
@@ -57,18 +59,18 @@ def task(parsed_args: argparse.Namespace):
 
     # calculate the average interestingness
     total_intere = 0.
-    for _, _, intere in intere_result:
+    for _, _, intere, _ in intere_result:
         total_intere += intere
     print(f"Average interestingness: {total_intere / len(intere_result)}")
 
     results = []
     for i in range(len(problem_set)):
-        results.append((str(examples[i]), intere_result[i][0], intere_result[i][1], intere_result[i][2]))
+        results.append((str(examples[i]), intere_result[i][0], intere_result[i][1], intere_result[i][2], intere_result[i][3]))
 
     if parsed_args.output:
         with open(parsed_args.output, 'w') as f:
             writer = csv.writer(f)
-            writer.writerow(["Equation", "Size", "Complexity", "Interestingness"])
+            writer.writerow(["Equation", "Size", "Complexity", "Interestingness", "Time"])
             writer.writerows(results)
 
         print(f"Results saved to {parsed_args.output}.")

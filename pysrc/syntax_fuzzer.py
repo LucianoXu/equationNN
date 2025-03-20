@@ -1,7 +1,8 @@
 from typing import Optional
 from tqdm import tqdm
 from .env import env, Scenario
-from .problems import ProofTrace, GenProblemSet, GenProblemFactory, UniqueExamplePipe, LengthRequestPipe, MultiProcessPipe
+from .problems import GenProblemFactory, GenProblemSet, ProofTrace
+from . import problems
 import random
 
 class SyntaxFuzzerFactory(GenProblemFactory):
@@ -82,12 +83,13 @@ class SyntaxFuzzerFactory(GenProblemFactory):
         return f"SyntaxFuzzerFactory(max_step={self.max_step}, state_len={self.state_len}, context_len={self.context_len})"
 
 
-def standard_syntax_fuzzer(scenario: Scenario, max_step: int, state_len: int, context_len: int, nproc: int = 4) -> GenProblemFactory:
+def standard_syntax_fuzzer(scenario: Scenario, max_step: int, state_len: int, context_len: int, nproc: int = 4, vampire: str = 'vampire', timeout: float = 10.) -> GenProblemFactory:
     '''
     Create a standard syntax fuzzer.
     '''
     factory = SyntaxFuzzerFactory(scenario, max_step, state_len, context_len)
-    factory = LengthRequestPipe(factory, max_step)
-    factory = MultiProcessPipe(factory, nproc)
-    factory = UniqueExamplePipe(factory)
+    factory = problems.LengthRequestPipe(factory, max_step)
+    # factory = problems.VampireFailurePipe(factory, vampire, timeout)
+    factory = problems.MultiProcessPipe(factory, nproc)
+    factory = problems.UniqueExamplePipe(factory)
     return factory
