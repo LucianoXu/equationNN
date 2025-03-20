@@ -7,7 +7,7 @@ import csv
 from ..model import Llama3, MediumArgs
 from ..rl import gen_group
 from elab import ELab
-from ..proof import ProofTrace
+from ..problems import ProofTrace
 
 def build_parser(subparsers: argparse._SubParsersAction):
     parser = subparsers.add_parser("test_modelfuzzer_examples", help="Test the interestingness of model generated examples.")

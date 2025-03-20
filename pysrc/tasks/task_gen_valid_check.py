@@ -3,7 +3,7 @@ Continuously generate examples and check the validity of the generated examples.
 '''
 
 import argparse
-from ..syntax_fuzzer import gen_examples
+from ..syntax_fuzzer import SyntaxFuzzerFactory
 from ..env import Scenario, env
 
 def build_parser(subparsers: argparse._SubParsersAction):
@@ -23,9 +23,16 @@ def task(parsed_args: argparse.Namespace):
 
     scenario = Scenario(alg_code)
 
+    example_factory = SyntaxFuzzerFactory(
+        scenario=scenario,
+        max_step=parsed_args.max_step,
+        state_len=parsed_args.state_len_limit,
+        context_len=parsed_args.context_length
+    )
+
     while True:
-        traces = gen_examples(scenario, parsed_args.count, parsed_args.max_step, parsed_args.state_len_limit, parsed_args.context_length)
-        for trace in traces:
+        problem_set = example_factory.spawn(parsed_args.count)
+        for trace in problem_set.traces:
             for step in trace.steps:
                 print(step)
                 if not env.check_step(scenario.kernel, str(step)):

@@ -1,7 +1,7 @@
 from .model import *
 from .env import env, Scenario
 from .evaluation import test_intere_mp
-from . import syntax_fuzzer
+from .syntax_fuzzer import SyntaxFuzzerFactory
 
 import torch
 from torch.utils.tensorboard.writer import SummaryWriter
@@ -165,7 +165,7 @@ def solve_group(model, scenario : Scenario, states: Sequence[str|env.proof_state
     # process the examples
     rl_traces: list[list[RLStep]] = [[] for _ in range(batch_size)]
 
-    progress_bar = tqdm(total=step_limit)
+    progress_bar = tqdm(total=step_limit, leave=False)
 
     remaining_envs = envs
 
@@ -243,7 +243,7 @@ def gen_group(model,
     # process the examples
     rl_traces: list[list[RLStep]] = [[] for _ in range(batch_size)]
 
-    progress_bar = tqdm(total=step_limit)
+    progress_bar = tqdm(total=step_limit, leave=False)
 
     remaining_envs = envs
 
@@ -474,7 +474,7 @@ def adv_rl_train(
             torch.cuda.empty_cache()
 
             try:
-                for _ in range(accumulation_step):
+                for _ in tqdm(range(accumulation_step), desc="Accumulation Step", leave=True):
                     # STEP 1: sampling the episodes
                     # generate the problems
                     with gen_ctx:
@@ -745,6 +745,13 @@ def sol_rl_train_by_fuzzer(
     writer = SummaryWriter(ckpt_folder)
     writer.add_text("command", get_command(), t)
 
+    # construct the example factory
+    example_factory = SyntaxFuzzerFactory(
+        scenario=scenario, 
+        max_step=fuzzer_step_limit, 
+        state_len=state_len_limit, 
+        context_len=context_length)
+
     try:
         step = 0
         while step < num_steps:
@@ -759,11 +766,11 @@ def sol_rl_train_by_fuzzer(
             torch.cuda.empty_cache()
 
             try:
-                for _ in range(accumulation_step):
+                for _ in tqdm(range(accumulation_step), desc="Accumulation Step", leave=True):
                     # STEP 1: sampling the episodes
                     # generate the problems
-                    traces = syntax_fuzzer.gen_examples(scenario, batch_size, fuzzer_step_limit, state_len_limit, context_length)
-                    stts = [trace.final_stt for trace in traces]
+                    problem_set = example_factory.spawn(batch_size)
+                    stts = [trace.final_stt for trace in problem_set.traces]
                     
                     # solve the problems
                     sol_traces = solve_group(sol_model, scenario, stts, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
@@ -806,8 +813,8 @@ def sol_rl_train_by_fuzzer(
 
                 # test generation result
                 with torch.no_grad():
-                    demo_traces = syntax_fuzzer.gen_examples(scenario, 10, fuzzer_step_limit, state_len_limit, context_length)
-                    demo_stts = [trace.final_stt for trace in demo_traces]
+                    demo_problem_set = example_factory.spawn(10)
+                    demo_stts = [trace.final_stt for trace in demo_problem_set.traces]
 
                     demo_sols = solve_group(sol_model, scenario, demo_stts, rl_sol_step_limit, state_len_limit, context_length, rl_temperature)
 
@@ -941,7 +948,7 @@ def gen_rl_train_by_vampire(
             torch.cuda.empty_cache()
 
             try:
-                for _ in range(accumulation_step):
+                for _ in tqdm(range(accumulation_step), desc="Accumulation Step", leave=True):
                     # STEP 1: sampling the episodes
                     # generate the problems
                     gen_traces = gen_group(gen_model, scenario, batch_size, rl_gen_step_limit, state_len_limit, context_length, rl_temperature)

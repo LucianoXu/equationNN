@@ -1,5 +1,5 @@
 import argparse
-from ..syntax_fuzzer import gen_examples
+from ..syntax_fuzzer import SyntaxFuzzerFactory
 from ..env import Scenario
 
 def build_parser(subparsers: argparse._SubParsersAction):
@@ -21,8 +21,15 @@ def task(parsed_args: argparse.Namespace):
 
     scenario = Scenario(alg_code)
 
-    traces = gen_examples(scenario, parsed_args.count, parsed_args.max_step, parsed_args.state_len_limit, parsed_args.context_length)
-    for trace in traces:
+    example_factory = SyntaxFuzzerFactory(
+        scenario=scenario,
+        max_step=parsed_args.max_step,
+        state_len=parsed_args.state_len_limit,
+        context_len=parsed_args.context_length
+    )
+
+    problem_set = example_factory.spawn(parsed_args.count)
+    for trace in problem_set.traces:
         print(trace)
         print("\n\n")
 

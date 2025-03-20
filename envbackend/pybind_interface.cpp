@@ -26,7 +26,21 @@ PYBIND11_MODULE(envbackend, m) {
         .def("replace_term", &Term::replace_term)
         .def("replace_at", &Term::replace_at)
         .def("__str__", &Term::to_string)
-        .def("__repr__", &Term::to_repr);
+        .def("__repr__", &Term::to_repr)
+        .def(py::pickle(
+            [](const Term& term) {
+                return py::make_tuple(term.get_head(), term.get_args());
+            },
+            [](py::tuple t) {
+                if (t.size() != 2) {
+                    throw runtime_error("Invalid state!");
+                }
+                return make_shared<Term>(
+                    t[0].cast<string>(), 
+                    t[1].cast<vector<TermPtr>>()
+                );
+            }
+        ));
 
     py::class_<equation>(m, "Equation")
         .def(py::init<TermPtr, TermPtr>())
@@ -36,17 +50,78 @@ PYBIND11_MODULE(envbackend, m) {
         .def_property_readonly("size", &equation::get_size)
         .def("__str__", &equation::to_string)
         .def("__eq__", &equation::operator==)
-        .def("__repr__", &equation::to_repr);
+        .def("__repr__", &equation::to_repr)
+        .def(py::pickle(
+            [](const equation& eq) {
+                return py::make_tuple(eq.lhs, eq.rhs);
+            },
+            [](py::tuple t) {
+                if (t.size() != 2) {
+                    throw runtime_error("Invalid state!");
+                }
+                return equation(
+                    t[0].cast<TermPtr>(), 
+                    t[1].cast<TermPtr>()
+                );
+            }
+        ));
 
     py::class_<Signature, shared_ptr<Signature>>(m, "Signature")
         .def_property_readonly("func_symbols", &Signature::get_func_symbols)
         .def_property_readonly("variables", &Signature::get_variables)
         .def("term_valid", &Signature::term_valid)
-        .def("__str__", &Signature::to_string);
+        .def("__str__", &Signature::to_string)
+        .def(py::pickle(
+            [](const Signature& sig) {
+                return py::make_tuple(sig.get_func_symbols(), sig.get_init_variables());
+            },
+            [](py::tuple t) {
+                if (t.size() != 2) {
+                    throw runtime_error("Invalid state!");
+                }
+                return make_shared<Signature>(
+                    t[0].cast<std::vector<ualg::Signature::func_symbol>>(), 
+                    t[1].cast<std::vector<std::string>>()
+                );
+            }
+        ));
+
+
+    py::class_<Signature::func_symbol, shared_ptr<Signature::func_symbol>>(m, "FuncSymbol")
+        .def_readwrite("name", &Signature::func_symbol::name)
+        .def_readwrite("arity", &Signature::func_symbol::arity)
+        .def(py::pickle(
+            [](const Signature::func_symbol& fs) {
+                return py::make_tuple(fs.name, fs.arity);
+            },
+            [](py::tuple t) {
+                if (t.size() != 2) {
+                    throw runtime_error("Invalid state!");
+                }
+                return make_shared<Signature::func_symbol>(
+                    t[0].cast<string>(), 
+                    t[1].cast<unsigned>()
+                );
+            }
+        ));
 
     py::class_<Algebra, shared_ptr<Algebra>>(m, "Algebra")
         .def_property_readonly("signature", &Algebra::get_signature)
-        .def("__str__", &Algebra::to_string);
+        .def("__str__", &Algebra::to_string)
+        .def(py::pickle(
+            [](const Algebra& alg){
+                return py::make_tuple(alg.get_signature(), alg.get_axioms());
+            },
+            [](py::tuple t){
+                if (t.size() != 2) {
+                    throw runtime_error("Invalid state!");
+                }
+                return make_shared<Algebra>(
+                    t[0].cast<Signature>(),
+                    t[1].cast<vector<pair<string, equation>>>()
+                );
+            }
+        ));
 
     py::enum_<ACT_RESULT>(m, "ACT_RESULT")
         .value("FAILURE", ACT_RESULT::FAILURE)
@@ -56,18 +131,41 @@ PYBIND11_MODULE(envbackend, m) {
     py::class_<SymbolKernel>(m, "SymbolKernel")
         .def(py::init<const Algebra&>())
         .def("action", &SymbolKernel::action)
-        .def("action_by_code", &SymbolKernel::action_by_code);
+        .def("action_by_code", &SymbolKernel::action_by_code)
+        .def(py::pickle(
+            [](const SymbolKernel& kernel) {
+                return py::make_tuple(kernel.get_algebra());
+            },
+            [](py::tuple t) {
+                if (t.size() != 1) {
+                    throw runtime_error("Invalid state!");
+                }
+                return SymbolKernel(t[0].cast<Algebra>());
+            }
+        ));
 
     py::class_<Tokenizer>(m, "Tokenizer")
         .def(py::init<const Algebra&>())
         .def_property_readonly("vocab", &Tokenizer::get_vocab)
+        .def("get_algebra", &Tokenizer::get_algebra)
         .def("get_vocab_size", &Tokenizer::get_vocab_size)
         .def("get_token", &Tokenizer::get_token)
         .def("get_encoding", &Tokenizer::get_encoding)
         .def("get_pos_int_encoding", &Tokenizer::get_pos_int_encoding)
         .def("is_valid_token", &Tokenizer::is_valid_token)
         .def("encode", &Tokenizer::encode)
-        .def("decode", &Tokenizer::decode);
+        .def("decode", &Tokenizer::decode)
+        .def(py::pickle(
+            [](const Tokenizer& tokenizer) {
+                return py::make_tuple(tokenizer.get_algebra());
+            },
+            [](py::tuple t) {
+                if (t.size() != 1) {
+                    throw runtime_error("Invalid state!");
+                }
+                return Tokenizer(t[0].cast<Algebra>());
+            }
+        ));
 
     py::class_<NextTokenMachine> next_tok_machine(m, "NextTokenMachine");
     next_tok_machine
@@ -109,7 +207,15 @@ PYBIND11_MODULE(envbackend, m) {
         .def_readwrite("eq", &proof_state::eq)
         .def("__eq__", &proof_state::operator==)
         .def("__str__", &proof_state::to_string)
-        .def("__repr__", &proof_state::to_repr);
+        .def("__repr__", &proof_state::to_repr)
+        .def(py::pickle(
+            [](const proof_state& stt) {
+                return stt.eq;
+            },
+            [](equation eq) {
+                return proof_state(eq);
+            }
+        ));
 
     py::class_<proof_action>(m, "proof_action")
         .def(py::init<const string&, const TermPos&, const subst&>())
@@ -117,14 +223,43 @@ PYBIND11_MODULE(envbackend, m) {
         .def_readwrite("pos", &proof_action::pos)
         .def_readwrite("subst", &proof_action::spec_subst)
         .def("__str__", &proof_action::to_string)
-        .def("__repr__", &proof_action::to_repr);
+        .def("__repr__", &proof_action::to_repr)
+        .def(py::pickle(
+            [](const proof_action& act) {
+                return py::make_tuple(act.rule_name, act.pos, act.spec_subst);
+            },
+            [](py::tuple t) {
+                if (t.size() != 3) {
+                    throw runtime_error("Invalid state!");
+                }
+                return proof_action(
+                    t[0].cast<string>(),
+                    t[1].cast<TermPos>(),
+                    t[2].cast<subst>()
+                );
+            }
+        ));
 
     py::class_<proof_step>(m, "proof_step")
         .def(py::init<proof_state, proof_action>())
         .def_readwrite("stt", &proof_step::stt)
         .def_readwrite("act", &proof_step::act)
         .def("__str__", &proof_step::to_string)
-        .def("__repr__", &proof_step::to_repr);
+        .def("__repr__", &proof_step::to_repr)
+        .def(py::pickle(
+            [](const proof_step& step) {
+                return py::make_tuple(step.stt, step.act);
+            },
+            [](py::tuple t) {
+                if (t.size() != 2) {
+                    throw runtime_error("Invalid state!");
+                }
+                return proof_step(
+                    t[0].cast<proof_state>(),
+                    t[1].cast<proof_action>()
+                );
+            }
+        ));
 
     m.def("parse_term", &parse_term, "A function that parses the term code.");
     m.def("parse_equation", &parse_equation, "A function that parses the equation code.");

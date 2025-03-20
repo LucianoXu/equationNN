@@ -74,6 +74,10 @@ namespace ualg{
             return init_func_symbols;
         }
 
+        const std::vector<std::string>& get_init_variables() const {
+            return init_variables;
+        }
+
         const std::set<std::string>& get_variables() const {
             return variables;
         }

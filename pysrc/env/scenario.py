@@ -25,3 +25,11 @@ class Scenario:
         self.END_STT = self.tokenizer.get_encoding("</STT>")
         self.START_ACT = self.tokenizer.get_encoding("<ACT>")
         self.END_ACT = self.tokenizer.get_encoding("</ACT>")
+
+    def __getstate__(self):
+        return {
+            'alg': self.alg
+        }
+    
+    def __setstate__(self, state):
+        self.__init__(state['alg'])

@@ -153,6 +153,10 @@ namespace ualg {
     public:
         Tokenizer(const Algebra& _algebra);
 
+        const Algebra& get_algebra() const {
+            return algebra;
+        }
+
         const std::vector<std::string>& get_vocab() const {
             return vocab;
         }
