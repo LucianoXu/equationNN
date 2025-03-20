@@ -1,6 +1,6 @@
 from .model import *
 from .env import env, Scenario
-from .evaluation import test_intere_mp
+from .evaluation import test_intere_mp, test_intere_mp_grouped
 from .syntax_fuzzer import SyntaxFuzzerFactory
 
 import torch
@@ -39,6 +39,20 @@ class RLTrace:
     
     def __getitem__(self, idx: int) -> RLStep:
         return self.steps[idx]
+    
+    @property
+    def stts(self) -> list[env.proof_state]:
+        '''
+        All the states in the trace, including the initial and the final state.
+        '''
+        return [step.stt for step in self.steps] + [self.final_stt]
+    
+    @property
+    def eqs(self) -> list[env.Equation]:
+        '''
+        All the equations in the trace, including the initial and the final equation.
+        '''
+        return [step.stt.eq for step in self.steps] + [self.final_stt.eq]
     
     @property
     def init_stt(self) -> env.proof_state:
@@ -280,7 +294,7 @@ def construct_pseudo_loss(sol_traces: list[RLTrace], device: str|torch.device) -
         sol_traces: a list of RLTrace objects for the batch.
 
     Returns:
-        A tuple of the average reward and the pseudo loss.
+        A tuple of the average reward and the pseudo loss (minimization target).
     '''
 
     # calculate the baseline
@@ -302,6 +316,8 @@ def construct_pseudo_loss(sol_traces: list[RLTrace], device: str|torch.device) -
                 reward_to_go += trace[i].reward
 
             J += trace[i].log_prob * (reward_to_go - avg_trace_reward)
+    
+    J *= -1
 
     return avg_trace_reward, J / len(sol_traces)
 
@@ -513,12 +529,12 @@ def adv_rl_train(
                     # STEP 3: Backward pass and optimization
                     if learn_model == 'sol':
                         if any(len(trace.steps) > 0 for trace in sol_traces):
-                            (-sol_J).backward()        # Backward pass
+                            (sol_J).backward()        # Backward pass
                         else:
                             print("No valid sol trace generated.")
                     else:
                         if any(len(trace.steps) > 0 for trace in gen_traces):
-                            (-gen_J).backward()
+                            (gen_J).backward()
                         else:
                             print("No valid gen trace generated.")
 
@@ -790,7 +806,7 @@ def sol_rl_train_by_fuzzer(
 
                     # STEP 3: Backward pass and optimization
                     if any(len(trace.steps) > 0 for trace in sol_traces):
-                        (-sol_J).backward()
+                        (sol_J).backward()
                     else:
                         print("No valid gen trace generated.")
 
@@ -975,7 +991,7 @@ def gen_rl_train_by_vampire(
 
                     # STEP 3: Backward pass and optimization
                     if any(len(trace.steps) > 0 for trace in gen_traces):
-                        (-gen_J).backward()
+                        (gen_J).backward()
                     else:
                         print("No valid gen trace generated.")
 
